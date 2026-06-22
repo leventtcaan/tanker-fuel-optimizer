@@ -94,4 +94,16 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         is loose (even vmin 10kn arrives 160.6h), so optimizer floors all legs to
         10kn, no weather redistribution shown. valid result, not a bug. did NOT
         change berth_eta (out of 5c scope) — revisit in 5d input form.
-- [ ] Phase 5d — NEXT = input form. (define when start)
+- [x] Phase 5d — interactive input form. DONE. build passes, live E->C verified.
+      - no backend change. page.tsx now has controls panel (TR labels, EN code):
+        berth_eta_h number+range (110-175), dwt, service_speed, year select 2023-26,
+        per-leg weather sliders (1.0-1.6 step .1) wired via buildLegs -> map recolors.
+      - button-only (no auto-run) = simple+robust. payload built from live state.
+      - legs = useMemo(buildLegs(weather)). charts/map/badge all read live state.
+      - TR caption: Med ECA 0.1% sulphur since 2025 -> fuel pricey -> saving matters.
+      - DEFAULT_ETA: task said 128 for "E->C". MEASURED vs backend: 128h -> grade D,
+        130h is the real C threshold. set default = 130 (honors E->C intent).
+        live curl /optimize default payload: baseline E -> optimized C,
+        speeds 12.61/11.28/12.61, saving 22.6%. storm leg slowest = redistribution.
+      - npm run build OK. bundle 196kB.
+- [ ] Phase 5e — NEXT. (define when start)
