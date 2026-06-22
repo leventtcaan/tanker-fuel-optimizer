@@ -36,4 +36,12 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - backend/test_cii.py chains Phase 2 optimizer -> grade.
       - run good (dwt 40000, year 2026, 2100 nm): baseline E (ratio 1.435),
         optimized C (ratio 1.045). grade jump E -> C.
-- [ ] Phase 4 — NEXT = FastAPI. (define when start)
+- [x] Phase 4 — FastAPI API. DONE. checks passed.
+      - add deps: fastapi, uvicorn[standard], httpx. install in .venv.
+      - backend/schemas.py (LegIn, OptimizeRequest, ScenarioOut, OptimizeResponse).
+      - backend/main.py (CORS dev-only *, GET /health, POST /optimize).
+        reuse voyage/optimizer/cii. no logic rewrite.
+      - backend/test_api.py uses TestClient (no live server).
+      - run good: health ok. optimize baseline E, optimized C, save 27.17%.
+      - note: starlette TestClient warns httpx deprecate -> harmless, test pass.
+- [ ] Phase 5 — NEXT = Next.js frontend. (define when start)
