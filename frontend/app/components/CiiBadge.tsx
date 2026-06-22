@@ -32,7 +32,7 @@ function gradeColor(grade: string): string {
 function GradeBox({ grade }: { grade: string }) {
   return (
     <div
-      className="w-16 h-16 rounded flex items-center justify-center text-white text-2xl font-bold"
+      className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-lg"
       style={{ backgroundColor: gradeColor(grade) }}
     >
       {grade}
@@ -55,14 +55,14 @@ export default function CiiBadge({ baselineGrade, optimizedGrade }: Props) {
     : `CII Notu: ${baselineGrade} → ${optimizedGrade}`;
 
   return (
-    <div className="border rounded p-4">
-      <h2 className="font-semibold mb-2">CII Notu Değişimi</h2>
-      <div className="flex items-center gap-4">
+    <div className="pruva-card p-4">
+      <h2 className="font-semibold mb-3">CII Notu Değişimi</h2>
+      <div className="flex items-center justify-center gap-5">
         <GradeBox grade={baselineGrade} />
-        <span className="text-3xl text-gray-500">→</span>
+        <span className="text-4xl text-[var(--accent)]">→</span>
         <GradeBox grade={optimizedGrade} />
       </div>
-      <p className="text-sm text-gray-700 mt-3">{caption}</p>
+      <p className="text-sm text-[var(--muted)] mt-3 text-center">{caption}</p>
     </div>
   );
 }

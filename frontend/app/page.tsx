@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import SpeedProfileChart from "./components/SpeedProfileChart";
 import FuelCompareChart from "./components/FuelCompareChart";
@@ -62,6 +62,34 @@ const DEFAULT_FUEL_PRICES: Record<string, number> = {
   HSFO: 435.0,
 };
 const DEFAULT_ETS_PRICE = 85.0;
+
+// Thousands-separated integer formatting (Turkish locale).
+const fmt = (n: number) => Math.round(n).toLocaleString("tr-TR");
+
+// Collapsible input group with a clickable header.
+function Section({
+  title,
+  children,
+  defaultOpen = true,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-b border-[var(--border)] last:border-b-0 py-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between text-sm font-semibold text-[var(--text)]"
+      >
+        <span>{title}</span>
+        <span className="text-[var(--muted)]">{open ? "−" : "+"}</span>
+      </button>
+      {open && <div className="mt-3 space-y-3">{children}</div>}
+    </div>
+  );
+}
 
 export default function Home() {
   // Port list for the dropdowns (fetched from the backend).
@@ -163,119 +191,120 @@ export default function Home() {
 
   const routeCoords = (result?.route_coords ?? []) as [number, number][];
 
+  // Pick the meaningful fuel cost: blended when the route touches an ECA.
+  const scenarioCost = (s: ScenarioOut) =>
+    s.eca_nm > 0 ? s.blended_fuel_cost_usd : s.fuel_cost_usd;
+
   return (
-    <main className="min-h-screen p-8 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">Tanker Yakıt Optimizasyonu</h1>
-      <p className="text-sm text-gray-600 mb-6">
-        Gerçek deniz rotası (limandan limana). Kalkış/varış seçip optimize edin.
-      </p>
+    <main className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
+      {/* Top bar: PRUVA wordmark + tagline + honest DEMO pill. */}
+      <header className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-3 bg-[var(--panel)]">
+        <span className="text-xl font-extrabold tracking-wide text-[var(--accent)]">
+          PRUVA
+        </span>
+        <span className="hidden sm:inline text-sm text-[var(--muted)]">
+          Akıllı Tanker Rota &amp; Yakıt Optimizasyon Platformu
+        </span>
+        <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full border border-[var(--accent)] text-[var(--accent)]">
+          DEMO
+        </span>
+      </header>
 
-      {/* Controls panel */}
-      <div className="border rounded p-4 space-y-4 mb-6">
-        {/* Port dropdowns */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Kalkış</label>
-            <select
-              value={origin}
-              onChange={(e) => setOrigin(e.target.value)}
-              className="w-full border rounded px-2 py-1"
-            >
-              {ports.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Varış</label>
-            <select
-              value={dest}
-              onChange={(e) => setDest(e.target.value)}
-              className="w-full border rounded px-2 py-1"
-            >
-              {ports.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+      {/* Responsive 3-column layout: inputs | map | results. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_400px] gap-4 p-4">
+        {/* LEFT: inputs */}
+        <div className="pruva-card p-4 self-start">
+          <Section title="Rota">
+            <div>
+              <label className="pruva-label">Kalkış</label>
+              <select
+                value={origin}
+                onChange={(e) => setOrigin(e.target.value)}
+                className="pruva-input"
+              >
+                {ports.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="pruva-label">Varış</label>
+              <select
+                value={dest}
+                onChange={(e) => setDest(e.target.value)}
+                className="pruva-input"
+              >
+                {ports.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </Section>
 
-        {/* Berth ETA: number input + range slider stay in sync. */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Liman Varış Süresi (saat): {berthEta}
-          </label>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={50}
-              max={800}
-              step={5}
-              value={berthEta}
-              onChange={(e) => setBerthEta(Number(e.target.value))}
-              className="flex-1"
-            />
-            <input
-              type="number"
-              min={50}
-              max={800}
-              value={berthEta}
-              onChange={(e) => setBerthEta(Number(e.target.value))}
-              className="w-24 border rounded px-2 py-1"
-            />
-          </div>
-        </div>
+          <Section title="Sefer">
+            <div>
+              <label className="pruva-label">
+                Liman Varış Süresi: {berthEta} saat
+              </label>
+              <input
+                type="range"
+                min={50}
+                max={800}
+                step={5}
+                value={berthEta}
+                onChange={(e) => setBerthEta(Number(e.target.value))}
+                className="w-full accent-[var(--accent)]"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="pruva-label">Servis Hızı (kn)</label>
+                <input
+                  type="number"
+                  step={0.1}
+                  value={serviceSpeed}
+                  onChange={(e) => setServiceSpeed(Number(e.target.value))}
+                  className="pruva-input"
+                />
+              </div>
+              <div>
+                <label className="pruva-label">Yıl</label>
+                <select
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="pruva-input"
+                >
+                  {YEARS.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="pruva-label">DWT (ton)</label>
+              <input
+                type="number"
+                min={1}
+                value={dwt}
+                onChange={(e) => setDwt(Number(e.target.value))}
+                className="pruva-input"
+              />
+            </div>
+          </Section>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">DWT (ton)</label>
-            <input
-              type="number"
-              min={1}
-              value={dwt}
-              onChange={(e) => setDwt(Number(e.target.value))}
-              className="w-full border rounded px-2 py-1"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Servis Hızı (kn)</label>
-            <input
-              type="number"
-              step={0.1}
-              value={serviceSpeed}
-              onChange={(e) => setServiceSpeed(Number(e.target.value))}
-              className="w-full border rounded px-2 py-1"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Yıl</label>
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="w-full border rounded px-2 py-1"
-            >
-              {YEARS.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Per-leg weather sliders (one per resampled leg). */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Bacak Bazında Hava (1.0 sakin → 1.6 fırtına)
-          </label>
-          <div className="grid grid-cols-2 gap-2">
+          <Section title="Hava">
+            <label className="pruva-label">
+              Bacak Bazında Hava (1.0 sakin → 1.6 fırtına)
+            </label>
             {weather.map((w, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="text-sm w-16">Bacak {i + 1}</span>
+                <span className="text-xs w-16 text-[var(--muted)]">Bacak {i + 1}</span>
                 <input
                   type="range"
                   min={1.0}
@@ -283,24 +312,20 @@ export default function Home() {
                   step={0.1}
                   value={w}
                   onChange={(e) => setLegWeather(i, Number(e.target.value))}
-                  className="flex-1"
+                  className="flex-1 accent-[var(--accent)]"
                 />
-                <span className="text-sm w-8 text-right">{w.toFixed(1)}</span>
+                <span className="text-xs w-8 text-right">{w.toFixed(1)}</span>
               </div>
             ))}
-          </div>
-        </div>
+          </Section>
 
-        {/* Economics controls (reference prices, editable — NOT live quotes). */}
-        <div className="border-t pt-3">
-          <h3 className="text-sm font-semibold mb-2">Ekonomi</h3>
-          <div className="grid grid-cols-2 gap-3">
+          <Section title="Ekonomi">
             <div>
-              <label className="block text-sm font-medium mb-1">Yakıt Tipi</label>
+              <label className="pruva-label">Yakıt Tipi</label>
               <select
                 value={fuelType}
                 onChange={(e) => setFuelType(e.target.value)}
-                className="w-full border rounded px-2 py-1"
+                className="pruva-input"
               >
                 {FUEL_TYPES.map((f) => (
                   <option key={f} value={f}>
@@ -310,7 +335,7 @@ export default function Home() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label className="pruva-label">
                 {fuelType} Referans Fiyat (düzenlenebilir, $/ton)
               </label>
               <input
@@ -318,148 +343,138 @@ export default function Home() {
                 min={0}
                 value={fuelPrices[fuelType] ?? 0}
                 onChange={(e) => setSelectedFuelPrice(Number(e.target.value))}
-                className="w-full border rounded px-2 py-1"
+                className="pruva-input"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                ETS Referans Fiyat (€/tCO2)
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={etsPrice}
-                onChange={(e) => setEtsPrice(Number(e.target.value))}
-                className="w-full border rounded px-2 py-1"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="pruva-label">ETS (€/tCO2)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={etsPrice}
+                  onChange={(e) => setEtsPrice(Number(e.target.value))}
+                  className="pruva-input"
+                />
+              </div>
+              <div>
+                <label className="pruva-label">AB ETS Kapsam (0–1)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={euScopeFraction}
+                  onChange={(e) => setEuScopeFraction(Number(e.target.value))}
+                  className="pruva-input"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                AB ETS Kapsam Oranı (0–1)
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={1}
-                step={0.1}
-                value={euScopeFraction}
-                onChange={(e) => setEuScopeFraction(Number(e.target.value))}
-                className="w-full border rounded px-2 py-1"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Fiyatlar referanstır, canlı değildir; düzenleyebilirsiniz.
-          </p>
+            <p className="text-xs text-[var(--muted)]">
+              Fiyatlar referanstır, canlı değildir; düzenleyebilirsiniz.
+            </p>
+          </Section>
+
+          <button
+            onClick={handleOptimize}
+            disabled={loading}
+            className="mt-4 w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] text-[#04201c] font-semibold px-4 py-2.5 hover:opacity-90 disabled:opacity-50"
+          >
+            {loading && (
+              <span className="inline-block w-4 h-4 border-2 border-[#04201c] border-t-transparent rounded-full animate-spin" />
+            )}
+            {loading ? "Hesaplanıyor..." : "Optimize Et"}
+          </button>
+
+          {error && <p className="mt-3 text-sm text-[var(--grade-e)]">Hata: {error}</p>}
         </div>
 
-        <button
-          onClick={handleOptimize}
-          disabled={loading}
-          className="rounded bg-blue-600 text-white px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Hesaplanıyor..." : "Optimize Et"}
-        </button>
-      </div>
+        {/* CENTER: map (large, fills viewport height on desktop) */}
+        <div className="lg:h-[calc(100vh-7rem)] min-h-[420px]">
+          <RouteMap
+            routeCoords={routeCoords}
+            originName={origin}
+            destName={dest}
+            ecaZones={result?.eca_zones ?? []}
+          />
+        </div>
 
-      {error && <p className="mt-4 text-red-600">Hata: {error}</p>}
-
-      <div className="mt-6 space-y-4">
-        {/* Map: the real sea lane + ECA boxes, drawn from the response. */}
-        <RouteMap
-          routeCoords={routeCoords}
-          originName={origin}
-          destName={dest}
-          ecaZones={result?.eca_zones ?? []}
-        />
-
-        {result && (
-          <>
-            {/* ECA context: the Med has been a 0.1% sulphur ECA since May 2025,
-                so compliant fuel (VLSFO/MGO) is expensive there — burning less
-                of it through optimization saves more money and emissions. */}
-            <p className="text-sm text-gray-600">
-              Akdeniz ECA bölgesinde (2025&apos;ten beri %0.1 kükürt sınırı)
-              uyumlu yakıt pahalı; bu yüzden daha az yakıt yakmak hem maliyeti
-              hem emisyonu ciddi düşürür.
-            </p>
-
-            <p className="text-sm text-gray-700">
-              Toplam mesafe: {result.distance_nm.toFixed(0)} deniz mili
-            </p>
-
-            {result.baseline.eca_nm > 0 && (
-              <p className="text-sm text-green-700">
-                Rotanın {result.baseline.eca_nm.toFixed(0)} nm&apos;si ECA içinde
-                (düşük kükürt zorunlu, pahalı yakıt)
-              </p>
-            )}
-
-            {/* Phase 5b: visual charts of the same result. */}
-            <SpeedProfileChart legs={legsForChart} speeds={result.optimized.speeds} />
-            <FuelCompareChart
-              baselineFuel={result.baseline.fuel_t}
-              optimizedFuel={result.optimized.fuel_t}
-              savingPct={result.saving_pct}
-            />
-            <CiiBadge
-              baselineGrade={result.baseline.cii_grade}
-              optimizedGrade={result.optimized.cii_grade}
-            />
-
-            {/* Raw text fallback. */}
-            <div className="border rounded p-4">
-              <h2 className="font-semibold mb-2">Baz Senaryo (sabit hız)</h2>
-              <p>Yakıt: {result.baseline.fuel_t.toFixed(2)} ton</p>
-              <p>CII Notu: {result.baseline.cii_grade}</p>
-              <p>
-                Yakıt Maliyeti: $
-                {Math.round(
-                  result.baseline.eca_nm > 0
-                    ? result.baseline.blended_fuel_cost_usd
-                    : result.baseline.fuel_cost_usd
-                ).toLocaleString()}
-                {result.baseline.eca_nm > 0 ? " (ECA karışık yakıt)" : ""}
-              </p>
-              {euScopeFraction > 0 && (
-                <p>ETS Maliyeti: €{result.baseline.ets_cost_eur.toLocaleString()}</p>
-              )}
+        {/* RIGHT: results */}
+        <div className="space-y-4 self-start">
+          {!result && (
+            <div className="pruva-card p-6 text-sm text-[var(--muted)]">
+              Sonuçları görmek için sefer ayarlarını yapıp{" "}
+              <span className="text-[var(--accent)] font-semibold">Optimize Et</span>{" "}
+              düğmesine basın.
             </div>
+          )}
 
-            <div className="border rounded p-4">
-              <h2 className="font-semibold mb-2">Optimize Senaryo</h2>
-              <p>Yakıt: {result.optimized.fuel_t.toFixed(2)} ton</p>
-              <p>CII Notu: {result.optimized.cii_grade}</p>
-              <p>
-                Bacak Hızları:{" "}
-                {result.optimized.speeds
-                  ? result.optimized.speeds.map((s) => s.toFixed(2)).join(", ") +
-                    " knot"
-                  : "-"}
-              </p>
-              <p>
-                Yakıt Maliyeti: $
-                {Math.round(
-                  result.optimized.eca_nm > 0
-                    ? result.optimized.blended_fuel_cost_usd
-                    : result.optimized.fuel_cost_usd
-                ).toLocaleString()}
-                {result.optimized.eca_nm > 0 ? " (ECA karışık yakıt)" : ""}
-              </p>
-              {euScopeFraction > 0 && (
-                <p>ETS Maliyeti: €{result.optimized.ets_cost_eur.toLocaleString()}</p>
-              )}
-            </div>
+          {result && (
+            <>
+              {/* Headline: money saved (big teal number). */}
+              <div className="pruva-card p-5">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Para Tasarrufu
+                </p>
+                <p className="text-4xl font-extrabold text-[var(--accent)] mt-1">
+                  ${fmt(result.money_saved_usd)}
+                </p>
+                <p className="text-sm text-[var(--muted)] mt-1">
+                  Yakıt tasarrufu %{result.saving_pct.toFixed(1)} · CO₂{" "}
+                  {fmt(result.co2_saved_t)} t
+                </p>
+              </div>
 
-            <div className="border rounded p-4 bg-green-50">
-              <p>Yakıt Tasarrufu: {result.saving_pct.toFixed(1)}%</p>
-              <p>CO2 Tasarrufu: {result.co2_saved_t.toFixed(2)} ton</p>
-              <p className="font-semibold">
-                Para Tasarrufu: ${Math.round(result.money_saved_usd).toLocaleString()}
-              </p>
-            </div>
-          </>
-        )}
+              {/* Yakıt & CII summary. */}
+              <div className="pruva-card p-4 space-y-1 text-sm">
+                <h2 className="font-semibold mb-2">Yakıt &amp; CII</h2>
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted)]">Toplam mesafe</span>
+                  <span>{fmt(result.distance_nm)} nm</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted)]">Baz / Optimize yakıt</span>
+                  <span>
+                    {fmt(result.baseline.fuel_t)} → {fmt(result.optimized.fuel_t)} t
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted)]">Baz / Optimize maliyet</span>
+                  <span>
+                    ${fmt(scenarioCost(result.baseline))} → $
+                    {fmt(scenarioCost(result.optimized))}
+                  </span>
+                </div>
+                {euScopeFraction > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-[var(--muted)]">ETS (baz / optimize)</span>
+                    <span>
+                      €{fmt(result.baseline.ets_cost_eur)} → €
+                      {fmt(result.optimized.ets_cost_eur)}
+                    </span>
+                  </div>
+                )}
+                {result.baseline.eca_nm > 0 && (
+                  <p className="text-[var(--grade-a)] pt-1">
+                    Rotanın {fmt(result.baseline.eca_nm)} nm&apos;si ECA içinde
+                    (düşük kükürt zorunlu, pahalı yakıt)
+                  </p>
+                )}
+              </div>
+
+              <CiiBadge
+                baselineGrade={result.baseline.cii_grade}
+                optimizedGrade={result.optimized.cii_grade}
+              />
+              <SpeedProfileChart legs={legsForChart} speeds={result.optimized.speeds} />
+              <FuelCompareChart
+                baselineFuel={result.baseline.fuel_t}
+                optimizedFuel={result.optimized.fuel_t}
+                savingPct={result.saving_pct}
+              />
+            </>
+          )}
+        </div>
       </div>
     </main>
   );

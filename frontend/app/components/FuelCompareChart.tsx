@@ -35,22 +35,25 @@ export default function FuelCompareChart({
   ];
 
   return (
-    <div className="border rounded p-4">
+    <div className="pruva-card p-4">
       <h2 className="font-semibold mb-2">Yakıt Karşılaştırması (ton)</h2>
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="name" />
-          <YAxis unit=" t" />
-          <Tooltip formatter={(value) => [`${value} t`, "Yakıt"]} />
-          <Bar dataKey="fuel">
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f3a57" />
+          <XAxis dataKey="name" tick={{ fill: "#93a7bd", fontSize: 12 }} />
+          <YAxis unit=" t" tick={{ fill: "#93a7bd", fontSize: 12 }} />
+          <Tooltip
+            formatter={(value) => [`${value} t`, "Yakıt"]}
+            contentStyle={{ background: "#13283f", border: "1px solid #1f3a57", color: "#e6eef6" }}
+          />
+          <Bar dataKey="fuel" radius={[4, 4, 0, 0]}>
             {data.map((entry, i) => (
               <Cell key={i} fill={entry.color} />
             ))}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-      <p className="text-sm font-medium text-green-700 mt-2">
+      <p className="text-sm font-medium text-[var(--accent)] mt-2">
         Yakıt tasarrufu: %{savingPct.toFixed(1)}
       </p>
     </div>

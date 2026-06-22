@@ -174,4 +174,22 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         (ECA karışık yakıt) when eca_nm>0; money card uses blended money_saved.
       - live: 3 boxes, eca 858/non 5000, blended>flat, saved $101304.
       - npm run build OK. bundle 196kB.
-- [ ] Phase 9 — NEXT. (define when start)
+- [x] Phase 9 — PRUVA dark maritime UI (visual polish ONLY). DONE. build OK.
+      NO backend/logic/optimizer/CII/economics touched. all features still work.
+      - brand PRUVA, tagline "Akıllı Tanker Rota & Yakıt Optimizasyon Platformu".
+      - globals.css: dark theme CSS vars (--bg/--panel/--border/--accent teal/
+        --text/--muted + grade colors). .pruva-card/.pruva-input/.pruva-label.
+        leaflet popup/tooltip dark.
+      - layout.tsx: title PRUVA, lang=tr.
+      - page.tsx: top bar (wordmark+tagline+honest DEMO pill). 3-col grid
+        (lg:[320px_1fr_400px], stacks on mobile): LEFT collapsible Section groups
+        (Rota/Sefer/Hava/Ekonomi) + teal Optimize btn w/ spinner. CENTER big map
+        (fills viewport h). RIGHT result cards: big teal Para Tasarrufu, Yakıt&CII,
+        ECA line, 3 charts. removed old raw-text fallback. numbers fmt tr-TR.
+      - charts/CiiBadge restyled dark (pruva-card, dark axes/tooltip, pill+shadow
+        badge, big teal arrow).
+      - npm run build OK. bundle 197kB.
+      VIEW LIVE: backend `cd backend && .venv/bin/uvicorn main:app --port 8000`,
+      frontend `cd frontend && npm run dev`, open http://localhost:3000 (or 3001).
+      MVP visually complete.
+- [ ] Phase 10 — NEXT. (define when start)

@@ -71,12 +71,12 @@ export default function RouteMap({
   const dest = hasRoute ? routeCoords[routeCoords.length - 1] : null;
 
   return (
-    <div className="border rounded overflow-hidden">
+    <div className="pruva-card overflow-hidden h-full min-h-[400px]">
       <MapContainer
         center={[25, 40]}
         zoom={3}
         scrollWheelZoom={false}
-        style={{ height: "400px", width: "100%" }}
+        style={{ height: "100%", minHeight: "400px", width: "100%" }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

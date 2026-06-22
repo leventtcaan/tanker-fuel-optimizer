@@ -2,26 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+/* PRUVA dark maritime theme tokens. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --bg: #0a1a2f; /* deep navy page bg */
+  --panel: #13283f; /* card / panel */
+  --border: #1f3a57;
+  --accent: #2dd4bf; /* teal — primary actions, highlights */
+  --text: #e6eef6; /* light slate */
+  --muted: #93a7bd;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* CII grade colors */
+  --grade-a: #22c55e;
+  --grade-b: #22c55e;
+  --grade-c: #eab308;
+  --grade-d: #f97316;
+  --grade-e: #ef4444;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+@layer components {
+  /* Reusable card/panel surfaces. */
+  .pruva-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem; /* rounded-xl */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   }
+
+  /* Form controls themed for dark panels. */
+  .pruva-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    color: var(--text);
+    padding: 0.375rem 0.5rem;
+  }
+  .pruva-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .pruva-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+}
+
+/* Leaflet popups/tooltips on a dark theme. */
+.leaflet-popup-content-wrapper,
+.leaflet-tooltip {
+  background: var(--panel);
+  color: var(--text);
+}
+.leaflet-popup-tip {
+  background: var(--panel);
 }
