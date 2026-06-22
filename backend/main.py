@@ -13,6 +13,12 @@ from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
 from ports import PORTS
 from routing import get_sea_route, resample_to_legs
+from economics import (
+    fuel_cost_usd,
+    ets_cost_eur,
+    PRICES_USD_PER_T,
+    ETS_EUR_PER_TCO2,
+)
 from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut
 
 app = FastAPI(title="Tanker Fuel Optimizer API")
@@ -48,6 +54,15 @@ def health():
 def list_ports():
     """List known port names (for the frontend origin/destination dropdowns)."""
     return list(PORTS.keys())
+
+
+@app.get("/prices")
+def reference_prices():
+    """Editable REFERENCE prices (not live): bunker USD/ton and EU ETS EUR/tCO2."""
+    return {
+        "fuel_prices_usd_per_t": PRICES_USD_PER_T,
+        "ets_eur_per_tco2": ETS_EUR_PER_TCO2,
+    }
 
 
 @app.post("/optimize", response_model=OptimizeResponse)
@@ -90,6 +105,17 @@ def optimize(req: OptimizeRequest):
     saving_pct = (base["total_fuel"] - opt["total_fuel"]) / base["total_fuel"] * 100
     co2_saved_t = (base["total_fuel"] - opt["total_fuel"]) * CF
 
+    # Economics: cost per scenario (reuse economics.py; reference prices unless
+    # the request overrides them).
+    prices = req.fuel_prices or PRICES_USD_PER_T
+    ets = req.ets_price if req.ets_price is not None else ETS_EUR_PER_TCO2
+
+    base_fuel_cost = fuel_cost_usd(base["total_fuel"], req.fuel_type, prices)
+    opt_fuel_cost = fuel_cost_usd(opt["total_fuel"], req.fuel_type, prices)
+    base_ets = ets_cost_eur(base["total_fuel"] * CF, req.eu_scope_fraction, ets)
+    opt_ets = ets_cost_eur(opt["total_fuel"] * CF, req.eu_scope_fraction, ets)
+    money_saved_usd = base_fuel_cost - opt_fuel_cost
+
     baseline_out = ScenarioOut(
         fuel_t=base["total_fuel"],
         total_time_h=base["total_time_h"],
@@ -97,6 +123,8 @@ def optimize(req: OptimizeRequest):
         cii_ratio=base_cii["ratio"],
         cii_grade=base_cii["grade"],
         speeds=None,
+        fuel_cost_usd=base_fuel_cost,
+        ets_cost_eur=base_ets,
     )
     optimized_out = ScenarioOut(
         fuel_t=opt["total_fuel"],
@@ -105,6 +133,8 @@ def optimize(req: OptimizeRequest):
         cii_ratio=opt_cii["ratio"],
         cii_grade=opt_cii["grade"],
         speeds=opt["speeds"],
+        fuel_cost_usd=opt_fuel_cost,
+        ets_cost_eur=opt_ets,
     )
 
     return OptimizeResponse(
@@ -112,6 +142,7 @@ def optimize(req: OptimizeRequest):
         optimized=optimized_out,
         saving_pct=saving_pct,
         co2_saved_t=co2_saved_t,
+        money_saved_usd=money_saved_usd,
         distance_nm=distance,
         route_coords=route_coords,
     )

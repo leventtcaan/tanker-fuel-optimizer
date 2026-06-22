@@ -72,12 +72,21 @@ def test_real_routing():
     assert data["distance_nm"] > 5000, data["distance_nm"]
     assert data["saving_pct"] > 0, data["saving_pct"]
 
+    # Phase 7 economics: optimized should cost less fuel, and money saved > 0.
+    base_cost = data["baseline"]["fuel_cost_usd"]
+    opt_cost = data["optimized"]["fuel_cost_usd"]
+    assert opt_cost < base_cost, (opt_cost, base_cost)
+    assert data["money_saved_usd"] > 0, data["money_saved_usd"]
+
     print("\n=== Real routing: İstanbul (Ambarlı) -> Singapore ===")
     print(f"  distance      : {data['distance_nm']:.1f} nm")
     print(f"  route points  : {len(coords)}")
     print(f"  baseline grade: {data['baseline']['cii_grade']}")
     print(f"  optimized grade: {data['optimized']['cii_grade']}")
     print(f"  saving        : {data['saving_pct']:.1f}%")
+    print(f"  baseline fuel cost : ${base_cost:,.0f}")
+    print(f"  optimized fuel cost: ${opt_cost:,.0f}")
+    print(f"  money saved        : ${data['money_saved_usd']:,.0f}")
     print("Real-routing assertions passed.")
 
 

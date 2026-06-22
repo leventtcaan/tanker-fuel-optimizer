@@ -46,6 +46,18 @@ class OptimizeRequest(BaseModel):
         None, description="Optional per-leg weather factors for the resampled legs."
     )
 
+    # Economics inputs (optional; reference prices used when omitted).
+    fuel_type: str = Field("VLSFO", description="Bunker grade: VLSFO/LSMGO/HSFO.")
+    fuel_prices: dict[str, float] | None = Field(
+        None, description="Override USD/ton prices per fuel type; None = reference."
+    )
+    ets_price: float | None = Field(
+        None, description="Override EU ETS EUR/tCO2 price; None = reference."
+    )
+    eu_scope_fraction: float = Field(
+        0.0, description="Share of voyage CO2 inside EU ETS scope (0..1)."
+    )
+
 
 class ScenarioOut(BaseModel):
     """One scenario's result (baseline or optimized), graded on CII."""
@@ -58,6 +70,8 @@ class ScenarioOut(BaseModel):
     speeds: list[float] | None = Field(
         None, description="Per-leg speeds in knots; None for the baseline scenario."
     )
+    fuel_cost_usd: float = Field(..., description="Fuel cost of the scenario, in USD.")
+    ets_cost_eur: float = Field(..., description="EU ETS carbon cost, in EUR.")
 
 
 class OptimizeResponse(BaseModel):
@@ -67,6 +81,7 @@ class OptimizeResponse(BaseModel):
     optimized: ScenarioOut = Field(..., description="Fuel-minimizing scenario.")
     saving_pct: float = Field(..., description="Fuel saved, percent of baseline.")
     co2_saved_t: float = Field(..., description="CO2 saved, in metric tons.")
+    money_saved_usd: float = Field(..., description="Fuel cost saved, in USD.")
     distance_nm: float = Field(..., description="Total voyage distance, in nm.")
     route_coords: list[list[float]] | None = Field(
         None, description="[lat, lon] points of the real sea lane; None for legacy legs."

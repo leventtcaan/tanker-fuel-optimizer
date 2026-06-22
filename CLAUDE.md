@@ -130,4 +130,27 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         killed it, fresh start. localhost->Docker mizan (IPv6), use 127.0.0.1.
       - live: /ports=8, Gibraltar->İzmir eta130 = 1646nm 63pts E->C 18.2% saving.
       - npm run build OK. bundle 195kB.
-- [ ] Phase 7 — NEXT. (define when start)
+- [x] Phase 7 — economics layer (cost on top). DONE. backend green, build OK.
+      logic unchanged; cost added on top of fuel/CO2.
+      BACKEND (done + verified first):
+      - economics.py: REFERENCE (not live) prices PRICES_USD_PER_T (VLSFO586/
+        LSMGO737/HSFO435), ETS_EUR_PER_TCO2=85. fuel_cost_usd, ets_cost_eur
+        (eu_scope_fraction input; doc note ETS phase 2024=40/2025=70/2026=100%).
+      - schemas: OptimizeRequest +fuel_type/+fuel_prices/+ets_price/+eu_scope_fraction.
+        ScenarioOut +fuel_cost_usd/+ets_cost_eur. OptimizeResponse +money_saved_usd.
+      - main.py /optimize: cost both scenarios via economics.py (import, no inline
+        constants). money_saved = base.fuel_cost - opt.fuel_cost. + GET /prices.
+      - test_api.py routing test: assert opt.fuel_cost<base.fuel_cost & money_saved>0.
+        İstanbul->Singapore: base $406,482 -> opt $308,862, saved $97,620. GREEN.
+      FRONTEND (after backend green):
+      - page.tsx: "Ekonomi" group: fuel_type select (VLSFO/LSMGO/HSFO), editable
+        price ("Referans Fiyat (düzenlenebilir)" NOT canlı) prefilled from /prices,
+        ets_price, eu_scope_fraction(0-1 def 0). send all in payload.
+        results show per-scenario fuel cost (+ETS when scope>0) + Para Tasarrufu.
+      - step 6 of prompt was TRUNCATED ("Add a") -> completed sensibly as the
+        results cost display + money-saved card.
+      - GOTCHA: curl right after uvicorn start races (health up before routes) ->
+        wait for /prices ready, then test. live: LSMGO+scope0.7 Gibraltar->İzmir
+        base fuel$143652 ets€36114, opt $117499 €29539, saved $26153.
+      - npm run build OK. bundle 196kB.
+- [ ] Phase 8 — NEXT. (define when start)

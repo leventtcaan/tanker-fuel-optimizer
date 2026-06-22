@@ -18,6 +18,8 @@ type ScenarioOut = {
   cii_ratio: number;
   cii_grade: string;
   speeds: number[] | null;
+  fuel_cost_usd: number;
+  ets_cost_eur: number;
 };
 
 type OptimizeResponse = {
@@ -25,6 +27,7 @@ type OptimizeResponse = {
   optimized: ScenarioOut;
   saving_pct: number;
   co2_saved_t: number;
+  money_saved_usd: number;
   distance_nm: number;
   route_coords: number[][] | null;
 };
@@ -44,6 +47,16 @@ const DEFAULT_SERVICE_SPEED = 14.0;
 const DEFAULT_YEAR = 2026;
 const YEARS = [2023, 2024, 2025, 2026];
 
+// Economics defaults (editable REFERENCE prices, mirrored from the backend; the
+// /prices endpoint overwrites these on load when reachable).
+const FUEL_TYPES = ["VLSFO", "LSMGO", "HSFO"];
+const DEFAULT_FUEL_PRICES: Record<string, number> = {
+  VLSFO: 586.0,
+  LSMGO: 737.0,
+  HSFO: 435.0,
+};
+const DEFAULT_ETS_PRICE = 85.0;
+
 export default function Home() {
   // Port list for the dropdowns (fetched from the backend).
   const [ports, setPorts] = useState<string[]>([]);
@@ -60,6 +73,12 @@ export default function Home() {
   // One weather factor per resampled leg; >1.0 marks rougher water.
   const [weather, setWeather] = useState<number[]>(Array(NUM_LEGS).fill(1.0));
 
+  // Economics controls (editable reference prices, not live).
+  const [fuelType, setFuelType] = useState("VLSFO");
+  const [fuelPrices, setFuelPrices] = useState<Record<string, number>>(DEFAULT_FUEL_PRICES);
+  const [etsPrice, setEtsPrice] = useState(DEFAULT_ETS_PRICE);
+  const [euScopeFraction, setEuScopeFraction] = useState(0.0);
+
   const [result, setResult] = useState<OptimizeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +90,24 @@ export default function Home() {
       .then((list: string[]) => setPorts(list))
       .catch(() => setError("Liman listesi yüklenemedi"));
   }, []);
+
+  // Load reference prices once on mount; fall back to defaults on failure.
+  useEffect(() => {
+    fetch(`${API}/prices`)
+      .then((r) => r.json())
+      .then((p: { fuel_prices_usd_per_t: Record<string, number>; ets_eur_per_tco2: number }) => {
+        if (p.fuel_prices_usd_per_t) setFuelPrices(p.fuel_prices_usd_per_t);
+        if (typeof p.ets_eur_per_tco2 === "number") setEtsPrice(p.ets_eur_per_tco2);
+      })
+      .catch(() => {
+        /* keep the reference defaults */
+      });
+  }, []);
+
+  // Edit the price of the currently-selected fuel type.
+  function setSelectedFuelPrice(value: number) {
+    setFuelPrices((prev) => ({ ...prev, [fuelType]: value }));
+  }
 
   // Minimal legs (weather only) for coloring the speed-profile chart bars; the
   // real distances live server-side and aren't needed for the chart.
@@ -96,6 +133,10 @@ export default function Home() {
         service_speed: serviceSpeed,
         berth_eta_h: berthEta,
         year,
+        fuel_type: fuelType,
+        fuel_prices: fuelPrices,
+        ets_price: etsPrice,
+        eu_scope_fraction: euScopeFraction,
       };
       const res = await fetch(`${API}/optimize`, {
         method: "POST",
@@ -244,6 +285,68 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Economics controls (reference prices, editable — NOT live quotes). */}
+        <div className="border-t pt-3">
+          <h3 className="text-sm font-semibold mb-2">Ekonomi</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Yakıt Tipi</label>
+              <select
+                value={fuelType}
+                onChange={(e) => setFuelType(e.target.value)}
+                className="w-full border rounded px-2 py-1"
+              >
+                {FUEL_TYPES.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                {fuelType} Referans Fiyat (düzenlenebilir, $/ton)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={fuelPrices[fuelType] ?? 0}
+                onChange={(e) => setSelectedFuelPrice(Number(e.target.value))}
+                className="w-full border rounded px-2 py-1"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                ETS Referans Fiyat (€/tCO2)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={etsPrice}
+                onChange={(e) => setEtsPrice(Number(e.target.value))}
+                className="w-full border rounded px-2 py-1"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                AB ETS Kapsam Oranı (0–1)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.1}
+                value={euScopeFraction}
+                onChange={(e) => setEuScopeFraction(Number(e.target.value))}
+                className="w-full border rounded px-2 py-1"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Fiyatlar referanstır, canlı değildir; düzenleyebilirsiniz.
+          </p>
+        </div>
+
         <button
           onClick={handleOptimize}
           disabled={loading}
@@ -291,6 +394,10 @@ export default function Home() {
               <h2 className="font-semibold mb-2">Baz Senaryo (sabit hız)</h2>
               <p>Yakıt: {result.baseline.fuel_t.toFixed(2)} ton</p>
               <p>CII Notu: {result.baseline.cii_grade}</p>
+              <p>Yakıt Maliyeti: ${result.baseline.fuel_cost_usd.toLocaleString()}</p>
+              {euScopeFraction > 0 && (
+                <p>ETS Maliyeti: €{result.baseline.ets_cost_eur.toLocaleString()}</p>
+              )}
             </div>
 
             <div className="border rounded p-4">
@@ -304,11 +411,18 @@ export default function Home() {
                     " knot"
                   : "-"}
               </p>
+              <p>Yakıt Maliyeti: ${result.optimized.fuel_cost_usd.toLocaleString()}</p>
+              {euScopeFraction > 0 && (
+                <p>ETS Maliyeti: €{result.optimized.ets_cost_eur.toLocaleString()}</p>
+              )}
             </div>
 
             <div className="border rounded p-4 bg-green-50">
               <p>Yakıt Tasarrufu: {result.saving_pct.toFixed(1)}%</p>
               <p>CO2 Tasarrufu: {result.co2_saved_t.toFixed(2)} ton</p>
+              <p className="font-semibold">
+                Para Tasarrufu: ${Math.round(result.money_saved_usd).toLocaleString()}
+              </p>
             </div>
           </>
         )}
