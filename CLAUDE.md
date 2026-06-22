@@ -203,4 +203,19 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       VERIFIED live (Origin localhost:3002): /ports = 8 ports; /optimize
       İstanbul->Singapore eta480 = 78 route pts, baseline E -> optimized C,
       money_saved $101304, eca_nm 858, 3 eca_zones. all green.
+- [x] AUDIT — engine reviewed against reality. backend/AUDIT.md added.
+      checked empirically (not just read): fuel coeff, optimizer edge cases, CII
+      vs published IMO MEPC, economics math, ECA boxes, searoute distances, e2e.
+      RESULT: NO formula/unit BUGS found -> 0 code fixes. engine constants all
+      match IMO (CF 3.114, a5247/c0.610, Z, d1-d4 0.86/.94/1.06/1.18). distances
+      ok (İst->Sing 5858, Rot->Sing 8368, Gib->İzmir 1646). c=0.0145 realistic
+      (~40 t/day @14kn). lon/lat handling correct.
+      APPROX (ok, disclosed): single vessel coeff, weather=fuel-only, ECA split by
+      distance, single CF for MGO legs (~3% low), bbox ECAs, CII per-voyage
+      (intensity -> grade independent of route length).
+      LIMITATIONS flagged (NOT fixed, would change behavior): (1) no optimizer
+      infeasibility guard (too-tight ETA silently violates deadline); (2) money
+      saved = fuel only, excludes ETS; (3) blended cost ignores user fuel_type for
+      routed legs; (4) Med bbox over-covers Black Sea (latent); (5) required_cii
+      year fallback too strict for pre-2023.
 - [ ] Phase 10 — NEXT. (define when start)
