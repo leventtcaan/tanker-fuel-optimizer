@@ -218,4 +218,15 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       saved = fuel only, excludes ETS; (3) blended cost ignores user fuel_type for
       routed legs; (4) Med bbox over-covers Black Sea (latent); (5) required_cii
       year fallback too strict for pre-2023.
+- [x] FIX limitation #1 — optimizer feasibility guard. DONE. backend test green, build OK.
+      - optimizer.py: min_time_h = sum(leg_time at vmax). if berth_eta < min_time ->
+        return all-vmax fastest profile + feasible=False (+min_time_h). else solve
+        as before + feasible=True. no other logic changed.
+      - schemas: OptimizeResponse +feasible/+min_time_h. main.py passes through.
+      - test_api.py: normal ETA -> feasible True; İst->Sing @10h -> feasible False,
+        min_time 366.1h. GREEN.
+      - page.tsx: red (grade-E) warning banner when !feasible: "⚠ Bu varış süresi
+        imkansız ... En erken varış: X saat."
+      - AUDIT.md limitation #1 marked [FIXED]/RESOLVED.
+      - npm run build OK. bundle 197kB.
 - [ ] Phase 10 — NEXT. (define when start)

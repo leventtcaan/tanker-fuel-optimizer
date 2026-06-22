@@ -167,4 +167,6 @@ def optimize(req: OptimizeRequest):
         distance_nm=distance,
         route_coords=route_coords,
         eca_zones=eca_zones_out,
+        feasible=opt["feasible"],
+        min_time_h=opt["min_time_h"],
     )

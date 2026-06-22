@@ -88,6 +88,10 @@ def test_real_routing():
     )
     assert data["eca_zones"], "eca_zones should be present for routed voyages"
 
+    # Phase 11: a normal ETA must be feasible.
+    assert data["feasible"] is True, data["feasible"]
+    assert data["min_time_h"] > 0, data["min_time_h"]
+
     print("\n=== Real routing: İstanbul (Ambarlı) -> Singapore ===")
     print(f"  distance      : {data['distance_nm']:.1f} nm")
     print(f"  route points  : {len(coords)}")
@@ -102,7 +106,32 @@ def test_real_routing():
     print("Real-routing assertions passed.")
 
 
+def test_infeasible_eta():
+    """Phase 11: an impossibly tight ETA must be flagged feasible == False."""
+    payload = {
+        "origin": "İstanbul (Ambarlı)",
+        "dest": "Singapore",
+        "num_legs": 6,
+        "dwt": 40000,
+        "service_speed": 14.0,
+        "berth_eta_h": 10.0,  # ~5858 nm cannot be sailed in 10 h
+        "year": 2026,
+    }
+    resp = client.post("/optimize", json=payload)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    assert data["feasible"] is False, data["feasible"]
+    assert data["min_time_h"] > 10.0, data["min_time_h"]
+
+    print("\n=== Infeasible ETA: İstanbul -> Singapore @ 10 h ===")
+    print(f"  feasible   : {data['feasible']}")
+    print(f"  min_time_h : {data['min_time_h']:.1f} h (earliest possible arrival)")
+    print("Infeasible-ETA assertions passed.")
+
+
 if __name__ == "__main__":
     main()
     test_real_routing()
+    test_infeasible_eta()
     print("\nAll assertions passed.")

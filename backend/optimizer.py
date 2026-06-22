@@ -66,16 +66,33 @@ def optimize_speed_profile(legs, berth_eta_h, vmin=10.0, vmax=16.0, c=0.0145):
             speeds:       list of optimized speeds, one per leg, in knots.
             total_fuel:   total fuel at the optimized profile, in metric tons.
             total_time_h: total sailing time at the optimized profile, in hours.
+            min_time_h:   fastest possible time (all legs at vmax), in hours.
+            feasible:     False if berth_eta_h is below min_time_h (deadline
+                          unreachable even at full speed); True otherwise.
     """
     total_distance = sum(leg.distance_nm for leg in legs)
+
+    def total_fuel(speeds):
+        return sum(leg_fuel(s, leg, c) for s, leg in zip(speeds, legs))
+
+    # Fastest possible voyage: every leg at vmax. If even this overshoots the
+    # deadline, no speed profile can arrive on time -> the request is infeasible.
+    min_time_h = sum(leg_time(vmax, leg) for leg in legs)
+    if berth_eta_h < min_time_h:
+        # Return the fastest (all-vmax) profile but flag it as not on time.
+        fastest = [vmax] * len(legs)
+        return {
+            "speeds": fastest,
+            "total_fuel": total_fuel(fastest),
+            "total_time_h": min_time_h,
+            "min_time_h": min_time_h,
+            "feasible": False,
+        }
 
     # x0: the single constant speed that uses up exactly the whole time budget.
     x0_speed = total_distance / berth_eta_h
     x0_speed = min(max(x0_speed, vmin), vmax)
     x0 = np.full(len(legs), x0_speed)
-
-    def total_fuel(speeds):
-        return sum(leg_fuel(s, leg, c) for s, leg in zip(speeds, legs))
 
     def time_slack(speeds):
         # >= 0 means we arrive on or before the deadline.
@@ -98,4 +115,6 @@ def optimize_speed_profile(legs, berth_eta_h, vmin=10.0, vmax=16.0, c=0.0145):
         "speeds": speeds,
         "total_fuel": total_fuel(speeds),
         "total_time_h": sum(leg_time(s, leg) for s, leg in zip(speeds, legs)),
+        "min_time_h": min_time_h,
+        "feasible": True,
     }

@@ -94,3 +94,9 @@ class OptimizeResponse(BaseModel):
     eca_zones: list[dict] | None = Field(
         None, description="Approximate ECA boxes (name + bbox), for drawing."
     )
+    feasible: bool = Field(
+        True, description="False if the deadline is unreachable even at full speed."
+    )
+    min_time_h: float = Field(
+        0.0, description="Fastest possible voyage time (all legs at vmax), in hours."
+    )

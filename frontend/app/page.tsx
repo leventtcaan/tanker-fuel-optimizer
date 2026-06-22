@@ -36,6 +36,8 @@ type OptimizeResponse = {
   distance_nm: number;
   route_coords: number[][] | null;
   eca_zones: EcaZone[] | null;
+  feasible: boolean;
+  min_time_h: number;
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -411,6 +413,21 @@ export default function Home() {
 
           {result && (
             <>
+              {/* Infeasible deadline: even full speed can't make the ETA. */}
+              {!result.feasible && (
+                <div
+                  className="rounded-xl p-4 text-sm font-medium"
+                  style={{
+                    backgroundColor: "rgba(239,68,68,0.15)",
+                    border: "1px solid var(--grade-e)",
+                    color: "var(--grade-e)",
+                  }}
+                >
+                  ⚠ Bu varış süresi imkansız — gemi tam hızda bile yetişemez. En
+                  erken varış: {fmt(result.min_time_h)} saat.
+                </div>
+              )}
+
               {/* Headline: money saved (big teal number). */}
               <div className="pruva-card p-5">
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">

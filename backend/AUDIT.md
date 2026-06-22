@@ -102,12 +102,15 @@ code changes were required.
 
 ## LIMITATIONS (disclose honestly — not fixed; would change behavior)
 
-1. **No infeasibility guard in the optimizer.** If `berth_eta_h` is below the
+1. **[FIXED] No infeasibility guard in the optimizer.** If `berth_eta_h` is below the
    minimum possible time (all legs at `vmax`), SLSQP returns the all-`vmax`
    profile that *silently violates* the deadline (e.g. ETA 100 h on a 131.25 h
    voyage → returns 131.2 h, no warning). The UI's wide ETA slider (50–800 h)
    makes this reachable for long routes. Recommendation: detect
    `min_time > berth_eta_h` and surface a "deadline not achievable" warning.
+   RESOLVED: `optimize_speed_profile` now returns `feasible` + `min_time_h`; when
+   infeasible it returns the all-vmax profile flagged `feasible=False`, surfaced
+   to the API and shown as a red warning banner in the UI.
 2. **Money saved counts fuel only, not carbon.** `money_saved_usd = baseline fuel
    cost − optimized fuel cost` (USD). ETS cost (EUR) is computed and displayed but
    excluded from the headline saving, and the two currencies are never mixed.
