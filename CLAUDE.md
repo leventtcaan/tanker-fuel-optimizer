@@ -229,4 +229,25 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         imkansız ... En erken varış: X saat."
       - AUDIT.md limitation #1 marked [FIXED]/RESOLVED.
       - npm run build OK. bundle 197kB.
+- [x] FIX default-ETA UX — route-aware defaults + graceful infeasible UX. DONE.
+      PROBLEM: old default ETA 130 was below baseline (even min) time for most
+      routes -> optimizer forced to all-vmax -> NEGATIVE saving on first load.
+      BACKEND:
+      - main.py GET /route_info?origin=&dest=&num_legs= -> distance_nm, min_time_h
+        (all vmax), baseline_time_h (all 14kn), suggested_eta_h (round baseline*1.25).
+        reuses routing + voyage.leg_time. tested İst->Sing: 366<418<523 all+.
+      FRONTEND (page.tsx):
+      - on mount + when origin/dest change -> fetch /route_info: ETA slider
+        min=ceil(min_time) (can't pick infeasible), max=round(baseline*2),
+        value=suggested_eta. hint "En erken varış: X sa".
+      - infeasible (feasible=false): render ONLY red warning + "ETA'yı uygulanabilir
+        yap" btn (sets eta=ceil(min_time), re-optimizes). hide money/CII/charts.
+      - guard: money_saved<=0 never shown as big hero -> muted + "Bu ETA'da
+        yavaşlama payı yok — ETA'yı artırın".
+      - handleOptimize(etaOverride?) so the fix btn can re-run; main btn
+        onClick={()=>handleOptimize()} (no event-as-eta bug).
+      - VERIFIED: Gib->İzmir suggested eta147 -> E->A +36% $51758; İst->Sing
+        eta523 -> E->A +36% $151842; make-feasible eta367 -> feasible but money
+        <0 -> muted note (no negative hero).
+      - npm run build OK. bundle 197kB.
 - [ ] Phase 10 — NEXT. (define when start)

@@ -45,8 +45,9 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 // The route is resampled into this many legs server-side.
 const NUM_LEGS = 6;
 
-// Defaults. Gibraltar -> İzmir (Aliağa) is ~1646 nm; at a 130 h budget the ship
-// must slow below service speed, producing the baseline E -> optimized C jump.
+// Defaults. The ETA below is only a placeholder until /route_info loads on mount
+// and replaces it with a route-aware, fuel-saving suggested value (and sets the
+// slider bounds so an infeasible ETA can't be chosen).
 const DEFAULT_ORIGIN = "Gibraltar";
 const DEFAULT_DEST = "İzmir (Aliağa)";
 const DEFAULT_ETA = 130;
@@ -100,9 +101,12 @@ export default function Home() {
   // Voyage controls (form state).
   const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
   const [dest, setDest] = useState(DEFAULT_DEST);
-  // ETA range is wide (50-800 h): real routes span from ~240 nm to ~6000 nm, so
-  // the time budget must scale far beyond the old Mediterranean-only range.
+  // ETA + its slider bounds are route-aware: set from /route_info so the user can
+  // never pick an infeasible ETA and the default lands on a fuel-saving value.
   const [berthEta, setBerthEta] = useState(DEFAULT_ETA);
+  const [etaMin, setEtaMin] = useState(50);
+  const [etaMax, setEtaMax] = useState(800);
+  const [minTimeH, setMinTimeH] = useState<number | null>(null);
   const [dwt, setDwt] = useState(DEFAULT_DWT);
   const [serviceSpeed, setServiceSpeed] = useState(DEFAULT_SERVICE_SPEED);
   const [year, setYear] = useState(DEFAULT_YEAR);
@@ -140,6 +144,33 @@ export default function Home() {
       });
   }, []);
 
+  // Route-aware ETA defaults: on mount and whenever origin/dest change, fetch the
+  // route's timing and set the slider bounds + a sensible (fuel-saving) default.
+  useEffect(() => {
+    const url = `${API}/route_info?origin=${encodeURIComponent(
+      origin
+    )}&dest=${encodeURIComponent(dest)}&num_legs=${NUM_LEGS}`;
+    fetch(url)
+      .then((r) => r.json())
+      .then(
+        (info: {
+          min_time_h: number;
+          baseline_time_h: number;
+          suggested_eta_h: number;
+        }) => {
+          setMinTimeH(info.min_time_h);
+          // Floor at the earliest feasible arrival so an infeasible ETA can't be
+          // chosen; cap generously at twice the baseline time.
+          setEtaMin(Math.ceil(info.min_time_h));
+          setEtaMax(Math.round(info.baseline_time_h * 2));
+          setBerthEta(info.suggested_eta_h);
+        }
+      )
+      .catch(() => {
+        /* keep current ETA bounds on failure */
+      });
+  }, [origin, dest]);
+
   // Edit the price of the currently-selected fuel type.
   function setSelectedFuelPrice(value: number) {
     setFuelPrices((prev) => ({ ...prev, [fuelType]: value }));
@@ -156,7 +187,9 @@ export default function Home() {
     setWeather((prev) => prev.map((w, i) => (i === index ? value : w)));
   }
 
-  async function handleOptimize() {
+  async function handleOptimize(etaOverride?: number) {
+    const eta = etaOverride ?? berthEta;
+    if (etaOverride !== undefined) setBerthEta(etaOverride);
     setLoading(true);
     setError(null);
     try {
@@ -167,7 +200,7 @@ export default function Home() {
         weather,
         dwt,
         service_speed: serviceSpeed,
-        berth_eta_h: berthEta,
+        berth_eta_h: eta,
         year,
         fuel_type: fuelType,
         fuel_prices: fuelPrices,
@@ -254,13 +287,18 @@ export default function Home() {
               </label>
               <input
                 type="range"
-                min={50}
-                max={800}
-                step={5}
+                min={etaMin}
+                max={etaMax}
+                step={1}
                 value={berthEta}
                 onChange={(e) => setBerthEta(Number(e.target.value))}
                 className="w-full accent-[var(--accent)]"
               />
+              {minTimeH !== null && (
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  En erken varış: {fmt(minTimeH)} sa
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -378,7 +416,7 @@ export default function Home() {
           </Section>
 
           <button
-            onClick={handleOptimize}
+            onClick={() => handleOptimize()}
             disabled={loading}
             className="mt-4 w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] text-[#04201c] font-semibold px-4 py-2.5 hover:opacity-90 disabled:opacity-50"
           >
@@ -411,35 +449,58 @@ export default function Home() {
             </div>
           )}
 
-          {result && (
-            <>
-              {/* Infeasible deadline: even full speed can't make the ETA. */}
-              {!result.feasible && (
-                <div
-                  className="rounded-xl p-4 text-sm font-medium"
-                  style={{
-                    backgroundColor: "rgba(239,68,68,0.15)",
-                    border: "1px solid var(--grade-e)",
-                    color: "var(--grade-e)",
-                  }}
-                >
-                  ⚠ Bu varış süresi imkansız — gemi tam hızda bile yetişemez. En
-                  erken varış: {fmt(result.min_time_h)} saat.
-                </div>
-              )}
+          {/* Infeasible: show ONLY the warning + a one-click fix; hide all
+              money/CII/charts so no misleading numbers appear. */}
+          {result && !result.feasible && (
+            <div
+              className="rounded-xl p-4 space-y-3"
+              style={{
+                backgroundColor: "rgba(239,68,68,0.15)",
+                border: "1px solid var(--grade-e)",
+                color: "var(--grade-e)",
+              }}
+            >
+              <p className="text-sm font-medium">
+                ⚠ Bu varış süresi imkansız — gemi tam hızda bile yetişemez. En
+                erken varış: {fmt(result.min_time_h)} saat.
+              </p>
+              <button
+                onClick={() => handleOptimize(Math.ceil(result.min_time_h))}
+                className="rounded-lg bg-[var(--accent)] text-[#04201c] font-semibold px-3 py-1.5 text-sm hover:opacity-90"
+              >
+                ETA&apos;yı uygulanabilir yap
+              </button>
+            </div>
+          )}
 
-              {/* Headline: money saved (big teal number). */}
+          {result && result.feasible && (
+            <>
+              {/* Headline: money saved. Never render a negative value as a big
+                  teal hero — if there's no slack to slow down, show it muted. */}
               <div className="pruva-card p-5">
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   Para Tasarrufu
                 </p>
-                <p className="text-4xl font-extrabold text-[var(--accent)] mt-1">
-                  ${fmt(result.money_saved_usd)}
-                </p>
-                <p className="text-sm text-[var(--muted)] mt-1">
-                  Yakıt tasarrufu %{result.saving_pct.toFixed(1)} · CO₂{" "}
-                  {fmt(result.co2_saved_t)} t
-                </p>
+                {result.money_saved_usd > 0 ? (
+                  <>
+                    <p className="text-4xl font-extrabold text-[var(--accent)] mt-1">
+                      ${fmt(result.money_saved_usd)}
+                    </p>
+                    <p className="text-sm text-[var(--muted)] mt-1">
+                      Yakıt tasarrufu %{result.saving_pct.toFixed(1)} · CO₂{" "}
+                      {fmt(result.co2_saved_t)} t
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-semibold text-[var(--muted)] mt-1">
+                      ${fmt(result.money_saved_usd)}
+                    </p>
+                    <p className="text-sm text-[var(--muted)] mt-1">
+                      Bu ETA&apos;da yavaşlama payı yok — ETA&apos;yı artırın.
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Yakıt & CII summary. */}

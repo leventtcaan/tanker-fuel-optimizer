@@ -8,7 +8,7 @@ the response. No physics or optimization logic is reimplemented here.
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from voyage import Leg
+from voyage import Leg, leg_time
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
 from ports import PORTS
@@ -59,6 +59,40 @@ def reference_prices():
     return {
         "fuel_prices_usd_per_t": PRICES_USD_PER_T,
         "ets_eur_per_tco2": ETS_EUR_PER_TCO2,
+    }
+
+
+@app.get("/route_info")
+def route_info(origin: str, dest: str, num_legs: int = 6):
+    """Timing facts for a route, so the frontend can default the ETA sensibly.
+
+    Returns the route distance plus three reference times:
+      - min_time_h:      all legs at vmax (16 kn) = earliest possible arrival.
+      - baseline_time_h: all legs at service speed (14 kn).
+      - suggested_eta_h: baseline_time * 1.25, giving the ship slack to slow down
+        below service speed — which is what makes the optimizer actually save fuel.
+
+    Reuses the real sea route (routing.py) and the leg-time helper (voyage.py).
+    """
+    if origin not in PORTS:
+        raise HTTPException(status_code=400, detail=f"Unknown origin: {origin}")
+    if dest not in PORTS:
+        raise HTTPException(status_code=400, detail=f"Unknown dest: {dest}")
+
+    route = get_sea_route(PORTS[origin], PORTS[dest])
+    legs = resample_to_legs(route["coords_latlon"], num_legs)
+
+    vmax = 16.0
+    service_speed = 14.0
+    min_time_h = sum(leg_time(vmax, leg) for leg in legs)
+    baseline_time_h = sum(leg_time(service_speed, leg) for leg in legs)
+    suggested_eta_h = round(baseline_time_h * 1.25)
+
+    return {
+        "distance_nm": route["distance_nm"],
+        "min_time_h": min_time_h,
+        "baseline_time_h": baseline_time_h,
+        "suggested_eta_h": suggested_eta_h,
     }
 
 
