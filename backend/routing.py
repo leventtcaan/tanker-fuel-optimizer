@@ -101,3 +101,30 @@ def resample_to_legs(coords_latlon, k=6, weather=None):
         legs.append(Leg(leg_distance, leg_weather))
 
     return legs
+
+
+def leg_midpoints(coords_latlon, k):
+    """Representative [lat, lon] point for each of the k resampled legs.
+
+    Splits the polyline into k contiguous chunks (same scheme as
+    resample_to_legs) and returns the midpoint *point* of each chunk — a single
+    representative location to query weather for that leg.
+
+    Args:
+        coords_latlon: list of [lat, lon] points along the route.
+        k: number of legs.
+
+    Returns:
+        list of k (lat, lon) tuples.
+    """
+    n_points = len(coords_latlon)
+    n_segments = n_points - 1
+    midpoints = []
+    for leg_index in range(k):
+        start = leg_index * n_segments // k
+        end = (leg_index + 1) * n_segments // k
+        mid = (start + end) // 2
+        mid = min(mid, n_points - 1)
+        lat, lon = coords_latlon[mid]
+        midpoints.append((lat, lon))
+    return midpoints

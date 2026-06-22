@@ -275,4 +275,25 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - page.tsx: 2 comboboxes (Kalkış/Varış) replace selects. default-fill
         İstanbul->Singapore from /ports. route_info fires on originRef/destRef.
       - npm run build OK. bundle 198kB.
-- [ ] Phase B — NEXT. (define when start)
+- [x] Phase B — live Open-Meteo marine weather -> per-leg factors. DONE. test green, build OK.
+      BACKEND:
+      - weather.py: Open-Meteo Marine (free, no key). wave_to_weather_factor
+        (<1m=1.0 .. >5m=1.6, banded). async fetch_leg_weather: ALL legs via
+        asyncio.gather (concurrent), per-request 4s timeout, on error -> calm 1.0
+        fallback (never hangs). 10-min TTL cache keyed by rounded lat/lon.
+      - routing.py: leg_midpoints(coords,k) -> representative point per leg.
+      - schemas: OptimizeRequest +auto_weather(bool=True); OptimizeResponse
+        +legs_weather [{factor,wave_m,source}].
+      - main.py /optimize now ASYNC: if auto_weather & routed -> leg_midpoints ->
+        await fetch_leg_weather -> factors override manual sliders; return legs_weather.
+      - AUDIT.md: wave->factor band heuristic added as disclosed limitation #7.
+      - test_api.py: auto_weather=True -> 6 legs factor in[1,1.6] in 1.4s (live:
+        leg5 wave2.18m->1.25); forced-unreachable -> all 1.0 fallback. existing
+        routing/infeasible tests set auto_weather=False (deterministic). GREEN.
+      FRONTEND:
+      - page.tsx Hava: "Otomatik Hava (canlı)" toggle (default ON). ON -> sliders
+        read-only + auto-filled from legs_weather, per-leg wave_m + "● canlı"/
+        "○ varsayılan" badge by source. caption: Open-Meteo, çarpan=bizim eşlememiz.
+        OFF -> manual sliders. sends auto_weather in payload.
+      - npm run build OK. bundle 198kB.
+- [ ] Phase C — NEXT. (define when start)

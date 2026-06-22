@@ -43,7 +43,10 @@ class OptimizeRequest(BaseModel):
     dest: str | None = Field(None, description="Destination port name (see /ports).")
     num_legs: int = Field(6, gt=0, description="How many legs to resample the route into.")
     weather: list[float] | None = Field(
-        None, description="Optional per-leg weather factors for the resampled legs."
+        None, description="Optional per-leg weather factors (used when auto_weather is off)."
+    )
+    auto_weather: bool = Field(
+        True, description="If true, fetch live marine weather to set per-leg factors."
     )
 
     # Economics inputs (optional; reference prices used when omitted).
@@ -93,6 +96,9 @@ class OptimizeResponse(BaseModel):
     )
     eca_zones: list[dict] | None = Field(
         None, description="Approximate ECA boxes (name + bbox), for drawing."
+    )
+    legs_weather: list[dict] | None = Field(
+        None, description="Per-leg live weather meta: {factor, wave_m, source}."
     )
     feasible: bool = Field(
         True, description="False if the deadline is unreachable even at full speed."

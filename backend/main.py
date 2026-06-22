@@ -12,7 +12,8 @@ from voyage import Leg, leg_time
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
 from ports import curated_ports, search_ports, resolve_latlon
-from routing import get_sea_route, resample_to_legs
+from routing import get_sea_route, resample_to_legs, leg_midpoints
+from weather import fetch_leg_weather
 from economics import (
     fuel_cost_usd,
     blended_fuel_cost_usd,
@@ -107,16 +108,18 @@ def route_info(origin: str, dest: str, num_legs: int = 6):
 
 
 @app.post("/optimize", response_model=OptimizeResponse)
-def optimize(req: OptimizeRequest):
+async def optimize(req: OptimizeRequest):
     """Run baseline + optimized voyage, grade both on CII, return the comparison.
 
     Two input modes:
       - Real routing: if both `origin` and `dest` are given (each a known port
         name or a "lat,lon" string), build the real sea lane, resample it into
-        `num_legs` legs, and return route_coords.
+        `num_legs` legs, and return route_coords. When `auto_weather` is true,
+        per-leg weather factors come from live Open-Meteo marine data.
       - Legacy: otherwise use the explicit `legs` provided in the request.
     """
     route_coords = None
+    legs_weather = None
 
     if req.origin and req.dest:
         # Real sea-routing path. origin/dest may be a known port name or "lat,lon".
@@ -128,7 +131,16 @@ def optimize(req: OptimizeRequest):
             raise HTTPException(status_code=400, detail=f"Unknown dest: {req.dest}")
         route = get_sea_route(origin_ll, dest_ll)
         route_coords = route["coords_latlon"]
-        legs = resample_to_legs(route_coords, req.num_legs, req.weather)
+
+        if req.auto_weather:
+            # Live weather overrides the manual sliders: query each leg's midpoint
+            # concurrently and turn wave height into the per-leg weather factor.
+            mids = leg_midpoints(route_coords, req.num_legs)
+            legs_weather = await fetch_leg_weather(mids)
+            weather = [lw["factor"] for lw in legs_weather]
+        else:
+            weather = req.weather
+        legs = resample_to_legs(route_coords, req.num_legs, weather)
     elif req.legs:
         # Legacy explicit-legs path (backward compatible).
         legs = [Leg(l.distance_nm, l.weather) for l in req.legs]
@@ -216,4 +228,5 @@ def optimize(req: OptimizeRequest):
         eca_zones=eca_zones_out,
         feasible=opt["feasible"],
         min_time_h=opt["min_time_h"],
+        legs_weather=legs_weather,
     )

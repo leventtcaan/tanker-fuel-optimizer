@@ -94,6 +94,7 @@ def test_real_routing():
         "service_speed": 14.0,
         "berth_eta_h": eta,
         "year": 2026,
+        "auto_weather": False,  # deterministic: don't hit the live weather API here
     }
     resp = client.post("/optimize", json=payload)
     assert resp.status_code == 200, resp.text
@@ -137,6 +138,7 @@ def test_infeasible_eta():
         "service_speed": 14.0,
         "berth_eta_h": 10.0,  # a multi-thousand-nm route cannot be done in 10 h
         "year": 2026,
+        "auto_weather": False,
     }
     resp = client.post("/optimize", json=payload)
     assert resp.status_code == 200, resp.text
@@ -151,8 +153,76 @@ def test_infeasible_eta():
     print("Infeasible-ETA assertions passed.")
 
 
+def _weather_payload(auto_weather):
+    izmir = client.get("/ports/search", params={"q": "izmir"}).json()[0]
+    sing = client.get("/ports/search", params={"q": "singapore"}).json()[0]
+    return {
+        "origin": _latlon(izmir),
+        "dest": _latlon(sing),
+        "num_legs": 6,
+        "dwt": 40000,
+        "service_speed": 14.0,
+        "berth_eta_h": 480.0,
+        "year": 2026,
+        "auto_weather": auto_weather,
+    }
+
+
+def test_auto_weather():
+    """Phase B: auto_weather returns 6 per-leg weather entries in [1.0, 1.6]."""
+    import time as _t
+
+    t0 = _t.time()
+    resp = client.post("/optimize", json=_weather_payload(True))
+    elapsed = _t.time() - t0
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    lw = data["legs_weather"]
+    assert lw is not None and len(lw) == 6, lw
+    for leg in lw:
+        assert 1.0 <= leg["factor"] <= 1.6, leg
+        assert leg["source"] in ("open-meteo", "fallback"), leg
+    # Even with per-leg timeouts and concurrent fetch, it must finish promptly.
+    assert elapsed < 30, elapsed
+
+    print("\n=== Auto weather (live Open-Meteo, concurrent) ===")
+    print(f"  completed in {elapsed:.1f}s")
+    for i, leg in enumerate(lw):
+        print(f"  leg {i+1}: wave_m={leg['wave_m']} factor={leg['factor']} src={leg['source']}")
+    print("Auto-weather assertions passed.")
+
+
+def test_weather_fallback():
+    """Phase B: if the weather API is unreachable, all 6 legs fall back to 1.0."""
+    import weather as wx
+
+    # Point the endpoints at an unreachable host and clear the cache so every
+    # leg is forced down the fallback path.
+    orig_marine, orig_forecast = wx.MARINE_URL, wx.FORECAST_URL
+    wx.MARINE_URL = "http://127.0.0.1:9/marine"
+    wx.FORECAST_URL = "http://127.0.0.1:9/forecast"
+    wx._CACHE.clear()
+    try:
+        resp = client.post("/optimize", json=_weather_payload(True))
+        assert resp.status_code == 200, resp.text
+        lw = resp.json()["legs_weather"]
+        assert lw is not None and len(lw) == 6, lw
+        assert all(leg["factor"] == 1.0 for leg in lw), lw
+        assert all(leg["source"] == "fallback" for leg in lw), lw
+    finally:
+        wx.MARINE_URL, wx.FORECAST_URL = orig_marine, orig_forecast
+        wx._CACHE.clear()
+
+    print("\n=== Weather fallback (API unreachable) ===")
+    print("  all 6 legs -> factor 1.0, source 'fallback' (no hang/crash)")
+    print("Weather-fallback assertions passed.")
+
+
 if __name__ == "__main__":
     main()
     test_real_routing()
     test_infeasible_eta()
+    test_auto_weather()
+    test_weather_fallback()
     print("\nAll assertions passed.")

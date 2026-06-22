@@ -133,6 +133,14 @@ code changes were required.
 6. **EU scope fraction is a manual input, not derived.** Honest by design (the
    docstring explains the 40/70/100% phase-in), but it means ETS cost is only as
    right as the operator's entered fraction.
+7. **Wave-height -> weather-factor mapping is a simplified band heuristic**
+   (`weather.py`). Live significant wave height from Open-Meteo Marine is mapped
+   to a fuel factor in [1.0, 1.6] via fixed bands (<1 m→1.0 … >5 m→1.6). Real
+   added wave resistance depends on hull form, heading relative to the swell, and
+   speed; this transparent band model is a stand-in, not a seakeeping
+   calculation. Weather is sampled at ONE representative midpoint per leg and at
+   the current time only (no along-leg or forecast-time variation). On API
+   timeout/error a leg falls back to a calm 1.0 factor.
 
 ---
 

@@ -39,7 +39,10 @@ type OptimizeResponse = {
   eca_zones: EcaZone[] | null;
   feasible: boolean;
   min_time_h: number;
+  legs_weather: LegWeather[] | null;
 };
+
+type LegWeather = { factor: number; wave_m: number | null; source: string };
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -113,6 +116,8 @@ export default function Home() {
   const [year, setYear] = useState(DEFAULT_YEAR);
   // One weather factor per resampled leg; >1.0 marks rougher water.
   const [weather, setWeather] = useState<number[]>(Array(NUM_LEGS).fill(1.0));
+  // When ON, per-leg factors come from live marine weather (sliders read-only).
+  const [autoWeather, setAutoWeather] = useState(true);
 
   // Economics controls (editable reference prices, not live).
   const [fuelType, setFuelType] = useState("VLSFO");
@@ -222,6 +227,7 @@ export default function Home() {
         fuel_prices: fuelPrices,
         ets_price: etsPrice,
         eu_scope_fraction: euScopeFraction,
+        auto_weather: autoWeather,
       };
       const res = await fetch(`${API}/optimize`, {
         method: "POST",
@@ -337,24 +343,64 @@ export default function Home() {
           </Section>
 
           <Section title="Hava">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={autoWeather}
+                onChange={(e) => setAutoWeather(e.target.checked)}
+                className="accent-[var(--accent)]"
+              />
+              Otomatik Hava (canlı)
+            </label>
+
             <label className="pruva-label">
               Bacak Bazında Hava (1.0 sakin → 1.6 fırtına)
             </label>
-            {weather.map((w, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs w-16 text-[var(--muted)]">Bacak {i + 1}</span>
-                <input
-                  type="range"
-                  min={1.0}
-                  max={1.6}
-                  step={0.1}
-                  value={w}
-                  onChange={(e) => setLegWeather(i, Number(e.target.value))}
-                  className="flex-1 accent-[var(--accent)]"
-                />
-                <span className="text-xs w-8 text-right">{w.toFixed(1)}</span>
+            {weather.map((w, i) => {
+              const lw = autoWeather ? result?.legs_weather?.[i] : undefined;
+              const value = lw ? lw.factor : w;
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs w-16 text-[var(--muted)]">Bacak {i + 1}</span>
+                  <input
+                    type="range"
+                    min={1.0}
+                    max={1.6}
+                    step={0.1}
+                    value={value}
+                    disabled={autoWeather}
+                    onChange={(e) => setLegWeather(i, Number(e.target.value))}
+                    className="flex-1 accent-[var(--accent)] disabled:opacity-60"
+                  />
+                  <span className="text-xs w-8 text-right">{value.toFixed(1)}</span>
+                </div>
+              );
+            })}
+
+            {/* Per-leg live wave height + source badge (after optimize). */}
+            {autoWeather && result?.legs_weather && (
+              <div className="space-y-0.5">
+                {result.legs_weather.map((lw, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--muted)]">
+                      Bacak {i + 1}: {lw.wave_m != null ? `${lw.wave_m} m dalga` : "veri yok"}
+                    </span>
+                    {lw.source === "open-meteo" ? (
+                      <span className="text-[var(--accent)]">● canlı</span>
+                    ) : (
+                      <span className="text-[var(--muted)]">○ varsayılan</span>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+
+            {autoWeather && (
+              <p className="text-xs text-[var(--muted)]">
+                Dalga verisi: Open-Meteo Marine (canlı). Çarpan = bizim
+                basitleştirilmiş eşlememiz.
+              </p>
+            )}
           </Section>
 
           <Section title="Ekonomi">
