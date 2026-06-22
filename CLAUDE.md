@@ -52,4 +52,16 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         POST /optimize, loading "Hesaplanıyor...", error handle, raw text result.
       - UI Turkish, code/comments English. minimal Tailwind.
       - npm run build -> compiled OK, lint+types OK.
+      - DEBUG (5a verify live): button gave "Failed to fetch".
+        ROOT CAUSE = port clash. another Docker app "mizan-backend" sits on
+        :8000 + :3000 via IPv6 wildcard. macOS localhost -> ::1 first, so browser
+        hit mizan (404, no CORS), not our app (IPv4 127.0.0.1:8000 only).
+        our next dev also fell back to :3001 (3000 taken).
+        FIX: .env.local -> http://127.0.0.1:8000 (force IPv4, dodge squatter).
+             main.py CORS -> explicit origins 3000+3001 (localhost+127) not "*"
+             ("*" + credentials is invalid spec; explicit list correct).
+        did NOT kill user Docker/other server (non-destructive).
+        VERIFIED live: backend up, curl with Origin localhost:3001 -> 200,
+        ACAO echoed, baseline E, optimized C, saving 27.17%. headless proof
+        (browser ext not connected). stack ran: backend :8000, frontend :3001.
 - [ ] Phase 5b — NEXT = charts (map, charts). (define when start)

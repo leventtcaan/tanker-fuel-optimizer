@@ -15,11 +15,21 @@ from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut
 
 app = FastAPI(title="Tanker Fuel Optimizer API")
 
-# DEV ONLY: wide-open CORS so a local frontend (e.g. Next.js on :3000) can call
-# this API. Lock allow_origins down to the real frontend origin in production.
+# DEV ONLY: explicit local frontend origins. The Next.js dev server runs on
+# :3000, but falls back to :3001 when :3000 is taken, so we allow both — for
+# localhost and 127.0.0.1, since the two are distinct origins to the browser.
+# Note: an explicit list (not ["*"]) is required when allow_credentials=True;
+# the wildcard is invalid with credentials per the CORS spec. Replace these
+# with the real frontend origin in production.
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
