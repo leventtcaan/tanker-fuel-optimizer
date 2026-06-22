@@ -67,4 +67,14 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - 5a CLOSED: frontend/.env.example committed (127.0.0.1:8000, not ignored).
         README "Run locally" docs added (backend uvicorn, frontend cp+install+dev,
         use 127.0.0.1 not localhost). bg dev servers shut down + cleaned up.
-- [ ] Phase 5b — NEXT = charts (map, charts). (define when start)
+- [x] Phase 5b — charts (Recharts). DONE. build passes. NO map (that is 5c).
+      - npm i recharts (3.8.1). no API/backend change. reuse result state.
+      - frontend/app/components/:
+        - SpeedProfileChart: BarChart per leg, storm leg (weather>1) red, calm blue.
+        - FuelCompareChart: 2 bars Sabit Hız vs Optimize + saving_pct caption.
+        - CiiBadge: 2 colored boxes + arrow, traffic light A/B green C yellow
+          D orange E red. TR caption "CII Notu: E → C (iki kademe iyileşme)".
+      - page.tsx renders the 3 below raw text when result exists.
+      - gotcha: recharts 3 Tooltip formatter type strict -> drop ": number" annot.
+      - npm run build OK. bundle 193kB first load (recharts).
+- [ ] Phase 5c — NEXT = map. (define when start)

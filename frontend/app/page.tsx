@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import SpeedProfileChart from "./components/SpeedProfileChart";
+import FuelCompareChart from "./components/FuelCompareChart";
+import CiiBadge from "./components/CiiBadge";
 
 // Hardcoded 3-leg storm voyage (matches the backend test scenario).
 const PAYLOAD = {
@@ -103,6 +106,18 @@ export default function Home() {
             <p>Yakıt Tasarrufu: {result.saving_pct.toFixed(1)}%</p>
             <p>CO2 Tasarrufu: {result.co2_saved_t.toFixed(2)} ton</p>
           </div>
+
+          {/* Phase 5b: visual charts of the same result */}
+          <SpeedProfileChart legs={PAYLOAD.legs} speeds={result.optimized.speeds} />
+          <FuelCompareChart
+            baselineFuel={result.baseline.fuel_t}
+            optimizedFuel={result.optimized.fuel_t}
+            savingPct={result.saving_pct}
+          />
+          <CiiBadge
+            baselineGrade={result.baseline.cii_grade}
+            optimizedGrade={result.optimized.cii_grade}
+          />
         </div>
       )}
     </main>
