@@ -5,12 +5,14 @@ existing engine functions from Phases 2-3 (voyage, optimizer, cii) and shapes
 the response. No physics or optimization logic is reimplemented here.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from voyage import Leg
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
+from ports import PORTS
+from routing import get_sea_route, resample_to_legs
 from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut
 
 app = FastAPI(title="Tanker Fuel Optimizer API")
@@ -42,10 +44,41 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/ports")
+def list_ports():
+    """List known port names (for the frontend origin/destination dropdowns)."""
+    return list(PORTS.keys())
+
+
 @app.post("/optimize", response_model=OptimizeResponse)
 def optimize(req: OptimizeRequest):
-    """Run baseline + optimized voyage, grade both on CII, return the comparison."""
-    legs = [Leg(l.distance_nm, l.weather) for l in req.legs]
+    """Run baseline + optimized voyage, grade both on CII, return the comparison.
+
+    Two input modes:
+      - Real routing: if both `origin` and `dest` are known port names, build the
+        real sea lane, resample it into `num_legs` legs, and return route_coords.
+      - Legacy: otherwise use the explicit `legs` provided in the request.
+    """
+    route_coords = None
+
+    if req.origin and req.dest:
+        # Real sea-routing path.
+        if req.origin not in PORTS:
+            raise HTTPException(status_code=400, detail=f"Unknown origin: {req.origin}")
+        if req.dest not in PORTS:
+            raise HTTPException(status_code=400, detail=f"Unknown dest: {req.dest}")
+        route = get_sea_route(PORTS[req.origin], PORTS[req.dest])
+        route_coords = route["coords_latlon"]
+        legs = resample_to_legs(route_coords, req.num_legs, req.weather)
+    elif req.legs:
+        # Legacy explicit-legs path (backward compatible).
+        legs = [Leg(l.distance_nm, l.weather) for l in req.legs]
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either origin+dest (port names) or explicit legs.",
+        )
+
     distance = sum(leg.distance_nm for leg in legs)
 
     base = baseline_voyage(legs, req.service_speed)
@@ -80,4 +113,5 @@ def optimize(req: OptimizeRequest):
         saving_pct=saving_pct,
         co2_saved_t=co2_saved_t,
         distance_nm=distance,
+        route_coords=route_coords,
     )

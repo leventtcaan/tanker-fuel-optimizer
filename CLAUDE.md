@@ -106,4 +106,28 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         live curl /optimize default payload: baseline E -> optimized C,
         speeds 12.61/11.28/12.61, saving 22.6%. storm leg slowest = redistribution.
       - npm run build OK. bundle 196kB.
-- [ ] Phase 5e — NEXT. (define when start)
+- [x] Phase 6 — real sea routing (searoute). DONE. backend test green, build OK.
+      BACKEND (done + verified first):
+      - requirements: + searoute (1.6.0). NOTE searoute takes/returns [lon,lat].
+      - ports.py: PORTS dict name->(lat,lon), 8 ports.
+      - routing.py: get_sea_route (searoute, units=naut, swap to [lat,lon] for
+        Leaflet, distance from properties.length), resample_to_legs (split ~78pt
+        polyline into k contiguous chunks, haversine sum per chunk -> Leg objs).
+      - schemas: OptimizeRequest +origin/+dest/+num_legs(6)/+weather, legs now
+        OPTIONAL (backward compat). OptimizeResponse +route_coords.
+      - main.py /optimize: origin+dest given -> real route -> resample -> use those
+        legs + return route_coords. else legacy explicit legs. + GET /ports.
+      - test_api.py: legacy test still E->C; NEW routing test İstanbul->Singapore
+        num_legs6 eta480 -> 5858nm, 78 pts, E->C, 24% saving. ALL GREEN.
+      FRONTEND (only after backend green):
+      - page.tsx: two port <select> (Kalkış/Varış) from GET /ports. send
+        origin+dest+num_legs+weather. ETA range widened 50-800 (routes vary
+        240nm..6000nm). deleted now-unused app/lib/voyageRoute.ts.
+      - RouteMap.tsx: polyline from response.route_coords, FitBounds via useMap,
+        markers origin/dest only. (no more 4 hardcoded waypoints.)
+      - 5b charts + CII badge + ECA caption still work off same result.
+      - GOTCHA during verify: stale uvicorn on :8000 served old code (404 /ports);
+        killed it, fresh start. localhost->Docker mizan (IPv6), use 127.0.0.1.
+      - live: /ports=8, Gibraltar->İzmir eta130 = 1646nm 63pts E->C 18.2% saving.
+      - npm run build OK. bundle 195kB.
+- [ ] Phase 7 — NEXT. (define when start)

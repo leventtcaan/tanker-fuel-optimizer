@@ -21,7 +21,11 @@ class LegIn(BaseModel):
 class OptimizeRequest(BaseModel):
     """Full request body for POST /optimize."""
 
-    legs: list[LegIn] = Field(..., min_length=1, description="Voyage legs in order.")
+    # Explicit legs (legacy path). Optional now: when origin+dest are given, the
+    # route is built from the sea lane instead and these are ignored.
+    legs: list[LegIn] | None = Field(
+        None, description="Voyage legs in order (ignored if origin+dest given)."
+    )
     dwt: float = Field(..., gt=0, description="Vessel deadweight tonnage.")
     service_speed: float = Field(
         14.0, description="Constant speed used for the baseline voyage, in knots."
@@ -32,6 +36,15 @@ class OptimizeRequest(BaseModel):
     year: int = Field(2026, description="Calendar year for the CII rating.")
     vmin: float = Field(10.0, description="Minimum allowed per-leg speed, in knots.")
     vmax: float = Field(16.0, description="Maximum allowed per-leg speed, in knots.")
+
+    # Real sea-routing path (optional). When both are set to known port names,
+    # the backend builds a real ocean route and resamples it into num_legs legs.
+    origin: str | None = Field(None, description="Origin port name (see /ports).")
+    dest: str | None = Field(None, description="Destination port name (see /ports).")
+    num_legs: int = Field(6, gt=0, description="How many legs to resample the route into.")
+    weather: list[float] | None = Field(
+        None, description="Optional per-leg weather factors for the resampled legs."
+    )
 
 
 class ScenarioOut(BaseModel):
@@ -55,3 +68,6 @@ class OptimizeResponse(BaseModel):
     saving_pct: float = Field(..., description="Fuel saved, percent of baseline.")
     co2_saved_t: float = Field(..., description="CO2 saved, in metric tons.")
     distance_nm: float = Field(..., description="Total voyage distance, in nm.")
+    route_coords: list[list[float]] | None = Field(
+        None, description="[lat, lon] points of the real sea lane; None for legacy legs."
+    )

@@ -3,3 +3,4 @@ scipy
 fastapi
 uvicorn[standard]
 httpx
+searoute

@@ -1,6 +1,14 @@
 "use client";
 
-import { MapContainer, Marker, Polyline, Popup, TileLayer } from "react-leaflet";
+import { useEffect } from "react";
+import {
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -11,8 +19,6 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
-import { WAYPOINTS } from "../lib/voyageRoute";
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -21,27 +27,42 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow.src,
 });
 
+type LatLon = [number, number];
+
 type Props = {
-  // One weather factor per leg (consecutive waypoint pair); >1.0 = storm.
-  weather?: number[];
+  // The real sea lane as [lat, lon] points (from the /optimize response).
+  routeCoords: LatLon[];
+  originName?: string;
+  destName?: string;
 };
 
-const STORM_COLOR = "#ef4444"; // red: storm segment (weather > 1.0)
-const CALM_COLOR = "#3b82f6"; // blue: calm segment
+const ROUTE_COLOR = "#2563eb"; // blue: the sea lane
+
+// Imperatively fit the map to the route whenever the coordinates change.
+function FitBounds({ coords }: { coords: LatLon[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (coords.length > 0) {
+      map.fitBounds(coords as L.LatLngBoundsExpression, { padding: [20, 20] });
+    }
+  }, [coords, map]);
+  return null;
+}
 
 /**
- * Leaflet map of the voyage: OpenStreetMap tiles, a marker per waypoint, and a
- * polyline whose segments are colored by weather (red for storm, blue calm).
+ * Leaflet map of the real sea route: OpenStreetMap tiles, the route polyline,
+ * and markers at the origin and destination only. The view auto-fits the route.
  */
-export default function RouteMap({ weather = [1.0, 1.4, 1.0] }: Props) {
-  // Map center roughly in the middle of the Mediterranean route.
-  const center: [number, number] = [37.5, 10.0];
+export default function RouteMap({ routeCoords, originName, destName }: Props) {
+  const hasRoute = routeCoords.length > 0;
+  const origin = hasRoute ? routeCoords[0] : null;
+  const dest = hasRoute ? routeCoords[routeCoords.length - 1] : null;
 
   return (
     <div className="border rounded overflow-hidden">
       <MapContainer
-        center={center}
-        zoom={5}
+        center={[25, 40]}
+        zoom={3}
         scrollWheelZoom={false}
         style={{ height: "400px", width: "100%" }}
       >
@@ -50,27 +71,22 @@ export default function RouteMap({ weather = [1.0, 1.4, 1.0] }: Props) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {WAYPOINTS.map((wp) => (
-          <Marker key={wp.name} position={[wp.lat, wp.lon]}>
-            <Popup>{wp.name}</Popup>
-          </Marker>
-        ))}
-
-        {/* One polyline per leg so each segment can carry its own weather color. */}
-        {WAYPOINTS.slice(0, -1).map((wp, i) => {
-          const next = WAYPOINTS[i + 1];
-          const isStorm = (weather[i] ?? 1.0) > 1.0;
-          return (
-            <Polyline
-              key={`seg-${i}`}
-              positions={[
-                [wp.lat, wp.lon],
-                [next.lat, next.lon],
-              ]}
-              pathOptions={{ color: isStorm ? STORM_COLOR : CALM_COLOR, weight: 4 }}
-            />
-          );
-        })}
+        {hasRoute && (
+          <>
+            <Polyline positions={routeCoords} pathOptions={{ color: ROUTE_COLOR, weight: 3 }} />
+            {origin && (
+              <Marker position={origin}>
+                <Popup>{originName ?? "Kalkış"}</Popup>
+              </Marker>
+            )}
+            {dest && (
+              <Marker position={dest}>
+                <Popup>{destName ?? "Varış"}</Popup>
+              </Marker>
+            )}
+            <FitBounds coords={routeCoords} />
+          </>
+        )}
       </MapContainer>
     </div>
   );

@@ -41,8 +41,47 @@ def main():
     assert data["optimized"]["cii_grade"] == "C", data["optimized"]["cii_grade"]
     assert data["saving_pct"] > 25, data["saving_pct"]
 
-    print("\nAll assertions passed.")
+    print("\nLegacy-legs assertions passed.")
+
+
+def test_real_routing():
+    """Phase 6: real port-to-port routing via /optimize with origin+dest."""
+    # /ports should expose the dropdown options.
+    ports = client.get("/ports").json()
+    assert "İstanbul (Ambarlı)" in ports, ports
+    assert "Singapore" in ports, ports
+
+    # Istanbul -> Singapore is ~5858 nm. Baseline at 14 kn ~ 418 h; all-vmin
+    # (10 kn) ~ 586 h. A 480 h budget binds the constraint so the optimizer
+    # slows below service speed for a real saving.
+    payload = {
+        "origin": "İstanbul (Ambarlı)",
+        "dest": "Singapore",
+        "num_legs": 6,
+        "dwt": 40000,
+        "service_speed": 14.0,
+        "berth_eta_h": 480.0,
+        "year": 2026,
+    }
+    resp = client.post("/optimize", json=payload)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    coords = data["route_coords"]
+    assert coords, "route_coords should be non-empty"
+    assert data["distance_nm"] > 5000, data["distance_nm"]
+    assert data["saving_pct"] > 0, data["saving_pct"]
+
+    print("\n=== Real routing: İstanbul (Ambarlı) -> Singapore ===")
+    print(f"  distance      : {data['distance_nm']:.1f} nm")
+    print(f"  route points  : {len(coords)}")
+    print(f"  baseline grade: {data['baseline']['cii_grade']}")
+    print(f"  optimized grade: {data['optimized']['cii_grade']}")
+    print(f"  saving        : {data['saving_pct']:.1f}%")
+    print("Real-routing assertions passed.")
 
 
 if __name__ == "__main__":
     main()
+    test_real_routing()
+    print("\nAll assertions passed.")
