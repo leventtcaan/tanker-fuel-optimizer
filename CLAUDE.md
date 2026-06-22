@@ -192,4 +192,15 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       VIEW LIVE: backend `cd backend && .venv/bin/uvicorn main:app --port 8000`,
       frontend `cd frontend && npm run dev`, open http://localhost:3000 (or 3001).
       MVP visually complete.
+- [x] DEBUG — "Liman listesi yüklenemedi" (/ports fetch failed). FIXED + verified.
+      ROOT CAUSE = CORS port mismatch. backend CORS allow-list only had 3000/3001.
+      dev server fell back to :3002 (3000=Docker mizan, 3001=stale next-server from
+      earlier phase), so browser origin localhost:3002 was blocked -> /ports (fires
+      on mount) was first visible failure. /ports endpoint + .env.local + fetch base
+      were all fine.
+      FIX (1 line, not business logic): main.py CORS allow_origins list ->
+      allow_origin_regex r"http://(localhost|127\.0\.0\.1):\d+" (any dev port).
+      VERIFIED live (Origin localhost:3002): /ports = 8 ports; /optimize
+      İstanbul->Singapore eta480 = 78 route pts, baseline E -> optimized C,
+      money_saved $101304, eca_nm 858, 3 eca_zones. all green.
 - [ ] Phase 10 — NEXT. (define when start)
