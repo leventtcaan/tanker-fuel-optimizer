@@ -14,6 +14,31 @@ steaming" saves real money.
 - **Phase 1 — done:** backend fuel model (`backend/fuel_model.py`) + a fuel
   table check (`backend/test_fuel.py`).
 
+## Run locally
+
+Before running the frontend, copy `frontend/.env.example` to
+`frontend/.env.local`.
+
+**Backend** (FastAPI on port 8000):
+
+```bash
+cd backend
+.venv/bin/uvicorn main:app --port 8000
+```
+
+**Frontend** (Next.js dev server):
+
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+> Note: the frontend talks to the API at `127.0.0.1` (IPv4), **not** `localhost`.
+> On macOS `localhost` can resolve to IPv6 (`::1`) first, which may collide with
+> other services on the same port; using `127.0.0.1` avoids that conflict.
+
 ## Run the check
 
 ```bash

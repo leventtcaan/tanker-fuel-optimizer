@@ -64,4 +64,7 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         VERIFIED live: backend up, curl with Origin localhost:3001 -> 200,
         ACAO echoed, baseline E, optimized C, saving 27.17%. headless proof
         (browser ext not connected). stack ran: backend :8000, frontend :3001.
+      - 5a CLOSED: frontend/.env.example committed (127.0.0.1:8000, not ignored).
+        README "Run locally" docs added (backend uvicorn, frontend cp+install+dev,
+        use 127.0.0.1 not localhost). bg dev servers shut down + cleaned up.
 - [ ] Phase 5b — NEXT = charts (map, charts). (define when start)
