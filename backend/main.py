@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from voyage import Leg, leg_time
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
-from ports import PORTS
+from ports import curated_ports, search_ports, resolve_latlon
 from routing import get_sea_route, resample_to_legs
 from economics import (
     fuel_cost_usd,
@@ -49,8 +49,14 @@ def health():
 
 @app.get("/ports")
 def list_ports():
-    """List known port names (for the frontend origin/destination dropdowns)."""
-    return list(PORTS.keys())
+    """Small curated default port list for the initial UI (backward compatible)."""
+    return curated_ports()
+
+
+@app.get("/ports/search")
+def ports_search(q: str, limit: int = 20):
+    """Search the full WPI port database by name or country (autocomplete)."""
+    return search_ports(q, limit)
 
 
 @app.get("/prices")
@@ -76,12 +82,14 @@ def route_info(origin: str, dest: str, num_legs: int = 6):
 
     Reuses the real sea route (routing.py) and the leg-time helper (voyage.py).
     """
-    if origin not in PORTS:
+    origin_ll = resolve_latlon(origin)
+    dest_ll = resolve_latlon(dest)
+    if origin_ll is None:
         raise HTTPException(status_code=400, detail=f"Unknown origin: {origin}")
-    if dest not in PORTS:
+    if dest_ll is None:
         raise HTTPException(status_code=400, detail=f"Unknown dest: {dest}")
 
-    route = get_sea_route(PORTS[origin], PORTS[dest])
+    route = get_sea_route(origin_ll, dest_ll)
     legs = resample_to_legs(route["coords_latlon"], num_legs)
 
     vmax = 16.0
@@ -103,19 +111,22 @@ def optimize(req: OptimizeRequest):
     """Run baseline + optimized voyage, grade both on CII, return the comparison.
 
     Two input modes:
-      - Real routing: if both `origin` and `dest` are known port names, build the
-        real sea lane, resample it into `num_legs` legs, and return route_coords.
+      - Real routing: if both `origin` and `dest` are given (each a known port
+        name or a "lat,lon" string), build the real sea lane, resample it into
+        `num_legs` legs, and return route_coords.
       - Legacy: otherwise use the explicit `legs` provided in the request.
     """
     route_coords = None
 
     if req.origin and req.dest:
-        # Real sea-routing path.
-        if req.origin not in PORTS:
+        # Real sea-routing path. origin/dest may be a known port name or "lat,lon".
+        origin_ll = resolve_latlon(req.origin)
+        dest_ll = resolve_latlon(req.dest)
+        if origin_ll is None:
             raise HTTPException(status_code=400, detail=f"Unknown origin: {req.origin}")
-        if req.dest not in PORTS:
+        if dest_ll is None:
             raise HTTPException(status_code=400, detail=f"Unknown dest: {req.dest}")
-        route = get_sea_route(PORTS[req.origin], PORTS[req.dest])
+        route = get_sea_route(origin_ll, dest_ll)
         route_coords = route["coords_latlon"]
         legs = resample_to_legs(route_coords, req.num_legs, req.weather)
     elif req.legs:

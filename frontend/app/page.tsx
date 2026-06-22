@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import SpeedProfileChart from "./components/SpeedProfileChart";
 import FuelCompareChart from "./components/FuelCompareChart";
 import CiiBadge from "./components/CiiBadge";
+import PortCombobox, { Port, titleCase } from "./components/PortCombobox";
 
 // CRITICAL: Leaflet touches window/document at import time, which throws under
 // Next's server-side rendering. Load the map client-side only (ssr: false).
@@ -45,11 +46,12 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 // The route is resampled into this many legs server-side.
 const NUM_LEGS = 6;
 
-// Defaults. The ETA below is only a placeholder until /route_info loads on mount
-// and replaces it with a route-aware, fuel-saving suggested value (and sets the
-// slider bounds so an infeasible ETA can't be chosen).
-const DEFAULT_ORIGIN = "Gibraltar";
-const DEFAULT_DEST = "İzmir (Aliağa)";
+// Defaults. The ETA below is only a placeholder until /route_info loads (once
+// both ports are chosen) and replaces it with a route-aware, fuel-saving value
+// (and sets the slider bounds so an infeasible ETA can't be chosen). Origin/dest
+// default to İstanbul -> Singapore, picked from the curated /ports list on mount.
+const DEFAULT_ORIGIN_MATCH = "ISTANBUL";
+const DEFAULT_DEST_MATCH = "SINGAPORE";
 const DEFAULT_ETA = 130;
 const DEFAULT_DWT = 40000;
 const DEFAULT_SERVICE_SPEED = 14.0;
@@ -95,12 +97,11 @@ function Section({
 }
 
 export default function Home() {
-  // Port list for the dropdowns (fetched from the backend).
-  const [ports, setPorts] = useState<string[]>([]);
+  // Selected origin/destination ports (full objects, so we have their coords).
+  const [originPort, setOriginPort] = useState<Port | null>(null);
+  const [destPort, setDestPort] = useState<Port | null>(null);
 
   // Voyage controls (form state).
-  const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
-  const [dest, setDest] = useState(DEFAULT_DEST);
   // ETA + its slider bounds are route-aware: set from /route_info so the user can
   // never pick an infeasible ETA and the default lands on a fuel-saving value.
   const [berthEta, setBerthEta] = useState(DEFAULT_ETA);
@@ -123,11 +124,16 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load the port list once on mount.
+  // Default-fill İstanbul -> Singapore from the curated /ports list on mount.
   useEffect(() => {
     fetch(`${API}/ports`)
       .then((r) => r.json())
-      .then((list: string[]) => setPorts(list))
+      .then((list: Port[]) => {
+        const find = (m: string) =>
+          list.find((p) => p.name.toUpperCase().includes(m)) ?? null;
+        setOriginPort(find(DEFAULT_ORIGIN_MATCH));
+        setDestPort(find(DEFAULT_DEST_MATCH));
+      })
       .catch(() => setError("Liman listesi yüklenemedi"));
   }, []);
 
@@ -144,12 +150,18 @@ export default function Home() {
       });
   }, []);
 
-  // Route-aware ETA defaults: on mount and whenever origin/dest change, fetch the
-  // route's timing and set the slider bounds + a sensible (fuel-saving) default.
+  // Unambiguous "lat,lon" references for the chosen ports (70 names repeat).
+  const originRef = originPort ? `${originPort.lat},${originPort.lon}` : "";
+  const destRef = destPort ? `${destPort.lat},${destPort.lon}` : "";
+
+  // Route-aware ETA defaults: once both ports are chosen (and whenever they
+  // change), fetch the route's timing and set the slider bounds + a sensible
+  // (fuel-saving) default ETA.
   useEffect(() => {
+    if (!originRef || !destRef) return;
     const url = `${API}/route_info?origin=${encodeURIComponent(
-      origin
-    )}&dest=${encodeURIComponent(dest)}&num_legs=${NUM_LEGS}`;
+      originRef
+    )}&dest=${encodeURIComponent(destRef)}&num_legs=${NUM_LEGS}`;
     fetch(url)
       .then((r) => r.json())
       .then(
@@ -169,7 +181,7 @@ export default function Home() {
       .catch(() => {
         /* keep current ETA bounds on failure */
       });
-  }, [origin, dest]);
+  }, [originRef, destRef]);
 
   // Edit the price of the currently-selected fuel type.
   function setSelectedFuelPrice(value: number) {
@@ -188,14 +200,18 @@ export default function Home() {
   }
 
   async function handleOptimize(etaOverride?: number) {
+    if (!originRef || !destRef) {
+      setError("Lütfen kalkış ve varış limanı seçin");
+      return;
+    }
     const eta = etaOverride ?? berthEta;
     if (etaOverride !== undefined) setBerthEta(etaOverride);
     setLoading(true);
     setError(null);
     try {
       const payload = {
-        origin,
-        dest,
+        origin: originRef,
+        dest: destRef,
         num_legs: NUM_LEGS,
         weather,
         dwt,
@@ -250,34 +266,16 @@ export default function Home() {
         {/* LEFT: inputs */}
         <div className="pruva-card p-4 self-start">
           <Section title="Rota">
-            <div>
-              <label className="pruva-label">Kalkış</label>
-              <select
-                value={origin}
-                onChange={(e) => setOrigin(e.target.value)}
-                className="pruva-input"
-              >
-                {ports.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="pruva-label">Varış</label>
-              <select
-                value={dest}
-                onChange={(e) => setDest(e.target.value)}
-                className="pruva-input"
-              >
-                {ports.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <PortCombobox
+              label="Kalkış"
+              value={originPort}
+              onSelect={setOriginPort}
+            />
+            <PortCombobox
+              label="Varış"
+              value={destPort}
+              onSelect={setDestPort}
+            />
           </Section>
 
           <Section title="Sefer">
@@ -433,8 +431,8 @@ export default function Home() {
         <div className="lg:h-[calc(100vh-7rem)] min-h-[420px]">
           <RouteMap
             routeCoords={routeCoords}
-            originName={origin}
-            destName={dest}
+            originName={originPort ? titleCase(originPort.name) : undefined}
+            destName={destPort ? titleCase(destPort.name) : undefined}
             ecaZones={result?.eca_zones ?? []}
           />
         </div>

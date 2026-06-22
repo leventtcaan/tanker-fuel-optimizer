@@ -255,4 +255,24 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       VERIFIED: Gib->İzmir eta132 -> E->C +20.7% $29687; İst->Sing eta469 ->
       E->C +20.4% $86093. both feasible, grade C. no frontend change (reads
       suggested_eta from API). npm run build OK.
-- [ ] Phase 10 — NEXT. (define when start)
+- [x] Phase A — real WPI ports dataset + searchable autocomplete. DONE. test green, build OK.
+      DATA: backend/data/ports.json COMMITTED (NGA WPI, 3.1MB, 5410 records;
+      3630 have names+coords -> indexed; 1780 location-only nameless skipped).
+      bundled = offline + no runtime download dep.
+      BACKEND:
+      - ports.py rewritten: load json ONCE at import into in-memory list +
+        lowercased search index. search_ports (rank: exact/prefix/substring then
+        port_size), curated_ports (ISTANBUL/ALIAGA/IZMIR/KEPPEL/ROTTERDAM/FUJAYRAH),
+        port_by_name, resolve_latlon (accepts "lat,lon" OR name; 70 dup names ->
+        frontend sends lat,lon).
+      - main.py: GET /ports/search?q=&limit; GET /ports now curated objects;
+        /optimize + /route_info resolve origin/dest via resolve_latlon (name or coords).
+      - test_api.py: q=izmir -> IZMIR Turkey 38.43,27.13; q=singapore -> KEPPEL;
+        searched IZMIR->Singapore E->C +20.3% $82747; infeasible@10h ok. GREEN.
+      FRONTEND:
+      - components/PortCombobox.tsx: debounced(300ms) /ports/search, dropdown
+        name+country, title-case UPPERCASE names. sends selected port as lat,lon.
+      - page.tsx: 2 comboboxes (Kalkış/Varış) replace selects. default-fill
+        İstanbul->Singapore from /ports. route_info fires on originRef/destRef.
+      - npm run build OK. bundle 198kB.
+- [ ] Phase B — NEXT. (define when start)
