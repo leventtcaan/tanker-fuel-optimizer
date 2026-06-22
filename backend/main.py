@@ -15,10 +15,12 @@ from ports import PORTS
 from routing import get_sea_route, resample_to_legs
 from economics import (
     fuel_cost_usd,
+    blended_fuel_cost_usd,
     ets_cost_eur,
     PRICES_USD_PER_T,
     ETS_EUR_PER_TCO2,
 )
+from zones import eca_split, ECA_ZONES
 from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut
 
 app = FastAPI(title="Tanker Fuel Optimizer API")
@@ -114,7 +116,25 @@ def optimize(req: OptimizeRequest):
     opt_fuel_cost = fuel_cost_usd(opt["total_fuel"], req.fuel_type, prices)
     base_ets = ets_cost_eur(base["total_fuel"] * CF, req.eu_scope_fraction, ets)
     opt_ets = ets_cost_eur(opt["total_fuel"] * CF, req.eu_scope_fraction, ets)
-    money_saved_usd = base_fuel_cost - opt_fuel_cost
+
+    # ECA-aware costing for routed voyages: fuel inside an ECA must be the pricier
+    # low-sulphur grade. Compute the split once (same route for both scenarios)
+    # and blend each scenario's cost. Legacy legs-only calls keep the flat cost.
+    eca_nm = non_eca_nm = 0.0
+    base_blended = opt_blended = 0.0
+    eca_zones_out = None
+    if route_coords:
+        eca_nm, non_eca_nm = eca_split(route_coords)
+        base_blended = blended_fuel_cost_usd(
+            base["total_fuel"], eca_nm, non_eca_nm, prices=prices
+        )
+        opt_blended = blended_fuel_cost_usd(
+            opt["total_fuel"], eca_nm, non_eca_nm, prices=prices
+        )
+        eca_zones_out = ECA_ZONES
+        money_saved_usd = base_blended - opt_blended
+    else:
+        money_saved_usd = base_fuel_cost - opt_fuel_cost
 
     baseline_out = ScenarioOut(
         fuel_t=base["total_fuel"],
@@ -125,6 +145,9 @@ def optimize(req: OptimizeRequest):
         speeds=None,
         fuel_cost_usd=base_fuel_cost,
         ets_cost_eur=base_ets,
+        eca_nm=eca_nm,
+        non_eca_nm=non_eca_nm,
+        blended_fuel_cost_usd=base_blended,
     )
     optimized_out = ScenarioOut(
         fuel_t=opt["total_fuel"],
@@ -135,6 +158,9 @@ def optimize(req: OptimizeRequest):
         speeds=opt["speeds"],
         fuel_cost_usd=opt_fuel_cost,
         ets_cost_eur=opt_ets,
+        eca_nm=eca_nm,
+        non_eca_nm=non_eca_nm,
+        blended_fuel_cost_usd=opt_blended,
     )
 
     return OptimizeResponse(
@@ -145,4 +171,5 @@ def optimize(req: OptimizeRequest):
         money_saved_usd=money_saved_usd,
         distance_nm=distance,
         route_coords=route_coords,
+        eca_zones=eca_zones_out,
     )

@@ -35,6 +35,44 @@ def fuel_cost_usd(fuel_t, fuel_type="VLSFO", prices=PRICES_USD_PER_T):
     return fuel_t * price
 
 
+def blended_fuel_cost_usd(
+    total_fuel_t,
+    eca_nm,
+    non_eca_nm,
+    eca_fuel="LSMGO",
+    open_fuel="VLSFO",
+    prices=PRICES_USD_PER_T,
+):
+    """Fuel cost when part of the voyage runs inside an ECA, in USD.
+
+    Inside an ECA a ship must burn <= 0.1% sulphur fuel (e.g. LSMGO), which is
+    pricier than the open-sea grade (e.g. VLSFO). We split the total fuel pro-rata
+    by distance share — the ECA share priced at the ECA fuel, the rest at the
+    open-sea fuel — and sum the two. With no distance, falls back to 0.
+
+    Args:
+        total_fuel_t: total fuel burned over the whole voyage, in metric tons.
+        eca_nm: distance sailed inside ECAs, in nautical miles.
+        non_eca_nm: distance sailed outside ECAs, in nautical miles.
+        eca_fuel: fuel grade key used inside ECAs.
+        open_fuel: fuel grade key used outside ECAs.
+        prices: mapping of fuel type -> USD per metric ton.
+
+    Returns:
+        Blended fuel cost in USD.
+    """
+    total_nm = eca_nm + non_eca_nm
+    if total_nm <= 0:
+        return 0.0
+    eca_share = eca_nm / total_nm
+    eca_fuel_t = total_fuel_t * eca_share
+    open_fuel_t = total_fuel_t * (1 - eca_share)
+    return (
+        fuel_cost_usd(eca_fuel_t, eca_fuel, prices)
+        + fuel_cost_usd(open_fuel_t, open_fuel, prices)
+    )
+
+
 def ets_cost_eur(co2_t, eu_scope_fraction=0.0, ets_price=ETS_EUR_PER_TCO2):
     """EU ETS carbon cost of a voyage in EUR.
 

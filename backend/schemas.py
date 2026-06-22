@@ -72,6 +72,11 @@ class ScenarioOut(BaseModel):
     )
     fuel_cost_usd: float = Field(..., description="Fuel cost of the scenario, in USD.")
     ets_cost_eur: float = Field(..., description="EU ETS carbon cost, in EUR.")
+    eca_nm: float = Field(0.0, description="Distance sailed inside ECAs, in nm.")
+    non_eca_nm: float = Field(0.0, description="Distance sailed outside ECAs, in nm.")
+    blended_fuel_cost_usd: float = Field(
+        0.0, description="Fuel cost with ECA/open-sea fuel split, in USD."
+    )
 
 
 class OptimizeResponse(BaseModel):
@@ -85,4 +90,7 @@ class OptimizeResponse(BaseModel):
     distance_nm: float = Field(..., description="Total voyage distance, in nm.")
     route_coords: list[list[float]] | None = Field(
         None, description="[lat, lon] points of the real sea lane; None for legacy legs."
+    )
+    eca_zones: list[dict] | None = Field(
+        None, description="Approximate ECA boxes (name + bbox), for drawing."
     )

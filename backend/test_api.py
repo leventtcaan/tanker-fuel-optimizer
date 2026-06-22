@@ -78,15 +78,27 @@ def test_real_routing():
     assert opt_cost < base_cost, (opt_cost, base_cost)
     assert data["money_saved_usd"] > 0, data["money_saved_usd"]
 
+    # Phase 8 ECA: the Med leg is an ECA, so eca_nm > 0; and blending in the
+    # pricier ECA fuel must push the cost above the flat all-open-fuel cost.
+    base = data["baseline"]
+    assert base["eca_nm"] > 0, base["eca_nm"]
+    assert base["blended_fuel_cost_usd"] > base["fuel_cost_usd"], (
+        base["blended_fuel_cost_usd"],
+        base["fuel_cost_usd"],
+    )
+    assert data["eca_zones"], "eca_zones should be present for routed voyages"
+
     print("\n=== Real routing: İstanbul (Ambarlı) -> Singapore ===")
     print(f"  distance      : {data['distance_nm']:.1f} nm")
     print(f"  route points  : {len(coords)}")
     print(f"  baseline grade: {data['baseline']['cii_grade']}")
     print(f"  optimized grade: {data['optimized']['cii_grade']}")
     print(f"  saving        : {data['saving_pct']:.1f}%")
-    print(f"  baseline fuel cost : ${base_cost:,.0f}")
-    print(f"  optimized fuel cost: ${opt_cost:,.0f}")
-    print(f"  money saved        : ${data['money_saved_usd']:,.0f}")
+    print(f"  eca_nm        : {base['eca_nm']:.1f} nm")
+    print(f"  non_eca_nm    : {base['non_eca_nm']:.1f} nm")
+    print(f"  baseline blended cost : ${base['blended_fuel_cost_usd']:,.0f}")
+    print(f"  optimized blended cost: ${data['optimized']['blended_fuel_cost_usd']:,.0f}")
+    print(f"  money saved (blended) : ${data['money_saved_usd']:,.0f}")
     print("Real-routing assertions passed.")
 
 

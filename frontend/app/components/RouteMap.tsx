@@ -6,7 +6,9 @@ import {
   Marker,
   Polyline,
   Popup,
+  Rectangle,
   TileLayer,
+  Tooltip,
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
@@ -29,14 +31,19 @@ L.Icon.Default.mergeOptions({
 
 type LatLon = [number, number];
 
+// ECA box from the backend: bbox = [lat_min, lat_max, lon_min, lon_max].
+type EcaZone = { name: string; bbox: number[] };
+
 type Props = {
   // The real sea lane as [lat, lon] points (from the /optimize response).
   routeCoords: LatLon[];
   originName?: string;
   destName?: string;
+  ecaZones?: EcaZone[];
 };
 
 const ROUTE_COLOR = "#2563eb"; // blue: the sea lane
+const ECA_COLOR = "#16a34a"; // green: emission control area
 
 // Imperatively fit the map to the route whenever the coordinates change.
 function FitBounds({ coords }: { coords: LatLon[] }) {
@@ -53,7 +60,12 @@ function FitBounds({ coords }: { coords: LatLon[] }) {
  * Leaflet map of the real sea route: OpenStreetMap tiles, the route polyline,
  * and markers at the origin and destination only. The view auto-fits the route.
  */
-export default function RouteMap({ routeCoords, originName, destName }: Props) {
+export default function RouteMap({
+  routeCoords,
+  originName,
+  destName,
+  ecaZones = [],
+}: Props) {
   const hasRoute = routeCoords.length > 0;
   const origin = hasRoute ? routeCoords[0] : null;
   const dest = hasRoute ? routeCoords[routeCoords.length - 1] : null;
@@ -70,6 +82,24 @@ export default function RouteMap({ routeCoords, originName, destName }: Props) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        {/* ECA boxes (semi-transparent green) drawn under the route. */}
+        {ecaZones.map((z) => {
+          const [latMin, latMax, lonMin, lonMax] = z.bbox;
+          const bounds: [LatLon, LatLon] = [
+            [latMin, lonMin],
+            [latMax, lonMax],
+          ];
+          return (
+            <Rectangle
+              key={z.name}
+              bounds={bounds}
+              pathOptions={{ color: ECA_COLOR, weight: 1, fillOpacity: 0.12 }}
+            >
+              <Tooltip>{z.name}</Tooltip>
+            </Rectangle>
+          );
+        })}
 
         {hasRoute && (
           <>

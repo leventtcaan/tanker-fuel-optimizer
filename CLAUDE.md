@@ -153,4 +153,25 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         wait for /prices ready, then test. live: LSMGO+scope0.7 Gibraltar->İzmir
         base fuel$143652 ets€36114, opt $117499 €29539, saved $26153.
       - npm run build OK. bundle 196kB.
-- [ ] Phase 8 — NEXT. (define when start)
+- [x] Phase 8 — ECA/SECA zones wired to blended cost. DONE. backend green, build OK.
+      YAGNI: ECA = simple bbox, NOT exact IMO polygons (noted in docstring).
+      BACKEND (done + verified first):
+      - zones.py: ECA_ZONES bbox list (Med ECA since 2025-05-01, North Sea, Baltic).
+        point_in_eca(lat,lon); eca_split(coords) -> (eca_nm, non_eca_nm) by segment
+        midpoint + haversine.
+      - economics.py: blended_fuel_cost_usd — split fuel pro-rata by distance,
+        ECA share priced at eca_fuel (LSMGO), rest at open_fuel (VLSFO).
+      - schemas: ScenarioOut +eca_nm/+non_eca_nm/+blended_fuel_cost_usd.
+        OptimizeResponse +eca_zones (box list for drawing).
+      - main.py /optimize: routed -> eca_split once, blended cost both scenarios,
+        money_saved uses blended, return eca_zones. legacy legs keep flat cost.
+      - test_api.py: assert eca_nm>0 & blended>flat. İstanbul->Singapore:
+        eca 858nm / non-eca 5000nm, base flat $406482 -> blended $421823,
+        money_saved(blended) $101304. GREEN.
+      FRONTEND (after green):
+      - RouteMap.tsx: ECA boxes as semi-transparent green Rectangle + name Tooltip.
+      - page.tsx: "Rotanın X nm'si ECA içinde..." line; cost cards show blended
+        (ECA karışık yakıt) when eca_nm>0; money card uses blended money_saved.
+      - live: 3 boxes, eca 858/non 5000, blended>flat, saved $101304.
+      - npm run build OK. bundle 196kB.
+- [ ] Phase 9 — NEXT. (define when start)

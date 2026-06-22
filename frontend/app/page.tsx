@@ -20,7 +20,12 @@ type ScenarioOut = {
   speeds: number[] | null;
   fuel_cost_usd: number;
   ets_cost_eur: number;
+  eca_nm: number;
+  non_eca_nm: number;
+  blended_fuel_cost_usd: number;
 };
+
+type EcaZone = { name: string; bbox: number[] };
 
 type OptimizeResponse = {
   baseline: ScenarioOut;
@@ -30,6 +35,7 @@ type OptimizeResponse = {
   money_saved_usd: number;
   distance_nm: number;
   route_coords: number[][] | null;
+  eca_zones: EcaZone[] | null;
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -359,8 +365,13 @@ export default function Home() {
       {error && <p className="mt-4 text-red-600">Hata: {error}</p>}
 
       <div className="mt-6 space-y-4">
-        {/* Map: the real sea lane, drawn from the response route_coords. */}
-        <RouteMap routeCoords={routeCoords} originName={origin} destName={dest} />
+        {/* Map: the real sea lane + ECA boxes, drawn from the response. */}
+        <RouteMap
+          routeCoords={routeCoords}
+          originName={origin}
+          destName={dest}
+          ecaZones={result?.eca_zones ?? []}
+        />
 
         {result && (
           <>
@@ -376,6 +387,13 @@ export default function Home() {
             <p className="text-sm text-gray-700">
               Toplam mesafe: {result.distance_nm.toFixed(0)} deniz mili
             </p>
+
+            {result.baseline.eca_nm > 0 && (
+              <p className="text-sm text-green-700">
+                Rotanın {result.baseline.eca_nm.toFixed(0)} nm&apos;si ECA içinde
+                (düşük kükürt zorunlu, pahalı yakıt)
+              </p>
+            )}
 
             {/* Phase 5b: visual charts of the same result. */}
             <SpeedProfileChart legs={legsForChart} speeds={result.optimized.speeds} />
@@ -394,7 +412,15 @@ export default function Home() {
               <h2 className="font-semibold mb-2">Baz Senaryo (sabit hız)</h2>
               <p>Yakıt: {result.baseline.fuel_t.toFixed(2)} ton</p>
               <p>CII Notu: {result.baseline.cii_grade}</p>
-              <p>Yakıt Maliyeti: ${result.baseline.fuel_cost_usd.toLocaleString()}</p>
+              <p>
+                Yakıt Maliyeti: $
+                {Math.round(
+                  result.baseline.eca_nm > 0
+                    ? result.baseline.blended_fuel_cost_usd
+                    : result.baseline.fuel_cost_usd
+                ).toLocaleString()}
+                {result.baseline.eca_nm > 0 ? " (ECA karışık yakıt)" : ""}
+              </p>
               {euScopeFraction > 0 && (
                 <p>ETS Maliyeti: €{result.baseline.ets_cost_eur.toLocaleString()}</p>
               )}
@@ -411,7 +437,15 @@ export default function Home() {
                     " knot"
                   : "-"}
               </p>
-              <p>Yakıt Maliyeti: ${result.optimized.fuel_cost_usd.toLocaleString()}</p>
+              <p>
+                Yakıt Maliyeti: $
+                {Math.round(
+                  result.optimized.eca_nm > 0
+                    ? result.optimized.blended_fuel_cost_usd
+                    : result.optimized.fuel_cost_usd
+                ).toLocaleString()}
+                {result.optimized.eca_nm > 0 ? " (ECA karışık yakıt)" : ""}
+              </p>
               {euScopeFraction > 0 && (
                 <p>ETS Maliyeti: €{result.optimized.ets_cost_eur.toLocaleString()}</p>
               )}
