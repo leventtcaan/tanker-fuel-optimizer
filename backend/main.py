@@ -69,8 +69,10 @@ def route_info(origin: str, dest: str, num_legs: int = 6):
     Returns the route distance plus three reference times:
       - min_time_h:      all legs at vmax (16 kn) = earliest possible arrival.
       - baseline_time_h: all legs at service speed (14 kn).
-      - suggested_eta_h: baseline_time * 1.25, giving the ship slack to slow down
-        below service speed — which is what makes the optimizer actually save fuel.
+      - suggested_eta_h: baseline_time * 1.12, giving the ship modest slack to
+        slow down below service speed — which is what makes the optimizer save
+        fuel. Tighter slack (1.12) yields a realistic, defensible saving (~C
+        grade) rather than aggressive slow-steaming (1.25 lands on ~A grade).
 
     Reuses the real sea route (routing.py) and the leg-time helper (voyage.py).
     """
@@ -86,7 +88,7 @@ def route_info(origin: str, dest: str, num_legs: int = 6):
     service_speed = 14.0
     min_time_h = sum(leg_time(vmax, leg) for leg in legs)
     baseline_time_h = sum(leg_time(service_speed, leg) for leg in legs)
-    suggested_eta_h = round(baseline_time_h * 1.25)
+    suggested_eta_h = round(baseline_time_h * 1.12)
 
     return {
         "distance_nm": route["distance_nm"],

@@ -250,4 +250,9 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         eta523 -> E->A +36% $151842; make-feasible eta367 -> feasible but money
         <0 -> muted note (no negative hero).
       - npm run build OK. bundle 197kB.
+- [x] TUNE suggested ETA ×1.25 -> ×1.12 (no logic change). credible ~C demo.
+      ×1.25 gave grade A / ~36% (too optimistic). ×1.12 = modest slack -> ~C.
+      VERIFIED: Gib->İzmir eta132 -> E->C +20.7% $29687; İst->Sing eta469 ->
+      E->C +20.4% $86093. both feasible, grade C. no frontend change (reads
+      suggested_eta from API). npm run build OK.
 - [ ] Phase 10 — NEXT. (define when start)
