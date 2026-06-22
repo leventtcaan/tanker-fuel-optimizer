@@ -44,4 +44,12 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - backend/test_api.py uses TestClient (no live server).
       - run good: health ok. optimize baseline E, optimized C, save 27.17%.
       - note: starlette TestClient warns httpx deprecate -> harmless, test pass.
-- [ ] Phase 5 — NEXT = Next.js frontend. (define when start)
+- [x] Phase 5a — frontend scaffold + /optimize wiring (raw, no charts). DONE. build passes.
+      - frontend/ = Next.js 14 (App Router, TS, Tailwind, ESLint, no src, alias @/*, npm).
+      - no nested .git (monorepo one root .git).
+      - frontend/.env.local NEXT_PUBLIC_API_URL=http://localhost:8000.
+      - frontend/app/page.tsx client comp: hardcoded 3-leg storm, button "Optimize Et",
+        POST /optimize, loading "Hesaplanıyor...", error handle, raw text result.
+      - UI Turkish, code/comments English. minimal Tailwind.
+      - npm run build -> compiled OK, lint+types OK.
+- [ ] Phase 5b — NEXT = charts (map, charts). (define when start)
