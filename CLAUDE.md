@@ -296,4 +296,22 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         "○ varsayılan" badge by source. caption: Open-Meteo, çarpan=bizim eşlememiz.
         OFF -> manual sliders. sends auto_weather in payload.
       - npm run build OK. bundle 198kB.
-- [ ] Phase C — NEXT. (define when start)
+- [x] Phase C — map visual upgrade. DONE. build OK. MVP visually complete.
+      no optimizer/CII/economics/weather logic touched.
+      BACKEND (small):
+      - data/zones.geojson COMMITTED: polygon-accurate (not bbox) zones — Med ECA,
+        North Sea ECA, Baltic ECA, + Gulf of Aden/NW Indian Ocean HRA. props
+        {name,type ECA|HRA,color}. zones.py bbox COST logic unchanged.
+      - main.py: GET /zones -> FeatureCollection (loaded once at import).
+      - AUDIT.md #4: display no longer over-covers (polygons); bbox cost note kept.
+      FRONTEND (RouteMap.tsx):
+      - base CARTO Dark (+ Voyager option) instead of OSM; OpenSeaMap seamark
+        transparent overlay. LayersControl top-right: ECA Bölgeleri / Korsanlık
+        (HRA) / Deniz İşaretleri toggles + 2 base layers.
+      - /zones polygons: ECA teal semi-transp + tooltip; HRA red dashed + tooltip.
+      - route: white casing + per-leg teal line, storm legs (factor>1.2) red
+        (split polyline into legsWeather chunks). origin teal-dot DivIcon, dest
+        flag DivIcon, name popups. fit bounds. ssr:false kept.
+      - map taller/hero (lg h calc(100vh-6rem), min 480). 3-col holds, stacks mobile.
+      - npm run build OK. bundle 198kB.
+- [ ] Phase D — NEXT. (define when start)

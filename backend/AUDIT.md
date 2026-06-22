@@ -120,11 +120,12 @@ code changes were required.
    It hard-codes ECA=LSMGO and open-sea=VLSFO. Defensible (ECAs mandate
    low-sulphur fuel), but a user who selects HSFO still gets VLSFO/LSMGO pricing
    on a routed voyage. Custom *prices* are respected; the *grade choice* is not.
-4. **Black Sea over-coverage.** The Mediterranean ECA box (30–46 N, −6 to 36.5 E)
-   spills into the Black Sea (e.g. 44 N, 34 E reads as ECA, which it is not).
-   No current port/route crosses it, so it is latent, but a Black Sea route would
-   be mis-priced as ECA. Tightening the box risks under-covering the eastern Med,
-   so left as-is and flagged.
+4. **Black Sea over-coverage (COST split only).** The Mediterranean ECA box
+   (30–46 N, −6 to 36.5 E) used by `zones.py` for the cost split spills into the
+   Black Sea (e.g. 44 N, 34 E reads as ECA, which it is not). No current
+   port/route crosses it, so it is latent. NOTE: the MAP now draws polygon-
+   accurate zones from data/zones.geojson (Phase C), so the *display* no longer
+   over-covers; only the bbox-based costing retains this simplification.
 5. **`required_cii` year fallback picks the strictest factor for *any* unknown
    year**, including past years (e.g. 2020 would wrongly get the 2026 11%
    reduction). Not reachable from the UI (year selector is 2023–2026), and

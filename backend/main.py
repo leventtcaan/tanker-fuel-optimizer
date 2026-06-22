@@ -5,6 +5,9 @@ existing engine functions from Phases 2-3 (voyage, optimizer, cii) and shapes
 the response. No physics or optimization logic is reimplemented here.
 """
 
+import json
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -25,6 +28,11 @@ from zones import eca_split, ECA_ZONES
 from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut
 
 app = FastAPI(title="Tanker Fuel Optimizer API")
+
+# Bundled maritime zone polygons for the map (loaded once; offline-first).
+_ZONES_GEOJSON_PATH = os.path.join(os.path.dirname(__file__), "data", "zones.geojson")
+with open(_ZONES_GEOJSON_PATH, encoding="utf-8") as _f:
+    _ZONES_GEOJSON = json.load(_f)
 
 # DEV ONLY: allow any localhost / 127.0.0.1 port. The Next.js dev server hops to
 # the next free port (3000 -> 3001 -> 3002 ...) when earlier ones are taken, so a
@@ -58,6 +66,12 @@ def list_ports():
 def ports_search(q: str, limit: int = 20):
     """Search the full WPI port database by name or country (autocomplete)."""
     return search_ports(q, limit)
+
+
+@app.get("/zones")
+def zones():
+    """Maritime zone polygons (ECA + piracy HRA) as GeoJSON, for the map to draw."""
+    return _ZONES_GEOJSON
 
 
 @app.get("/prices")

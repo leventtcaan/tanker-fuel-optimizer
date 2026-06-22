@@ -473,13 +473,13 @@ export default function Home() {
           {error && <p className="mt-3 text-sm text-[var(--grade-e)]">Hata: {error}</p>}
         </div>
 
-        {/* CENTER: map (large, fills viewport height on desktop) */}
-        <div className="lg:h-[calc(100vh-7rem)] min-h-[420px]">
+        {/* CENTER: the hero map — large, fills the viewport height on desktop. */}
+        <div className="lg:h-[calc(100vh-6rem)] min-h-[480px]">
           <RouteMap
             routeCoords={routeCoords}
             originName={originPort ? titleCase(originPort.name) : undefined}
             destName={destPort ? titleCase(destPort.name) : undefined}
-            ecaZones={result?.eca_zones ?? []}
+            legsWeather={result?.legs_weather ?? null}
           />
         </div>
 

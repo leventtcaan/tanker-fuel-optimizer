@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
+  LayerGroup,
+  LayersControl,
   MapContainer,
   Marker,
+  Polygon,
   Polyline,
   Popup,
-  Rectangle,
   TileLayer,
   Tooltip,
   useMap,
@@ -14,103 +16,206 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Bundlers (webpack/Next) break Leaflet's default marker icon: the CSS-relative
-// image paths don't survive bundling, so markers render as broken images. The
-// fix is to re-point the default icon at the bundled PNG assets explicitly.
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x.src,
-  iconUrl: markerIcon.src,
-  shadowUrl: markerShadow.src,
-});
+const API = process.env.NEXT_PUBLIC_API_URL;
 
 type LatLon = [number, number];
+type LegWeather = { factor: number; wave_m: number | null; source: string };
 
-// ECA box from the backend: bbox = [lat_min, lat_max, lon_min, lon_max].
-type EcaZone = { name: string; bbox: number[] };
+// GeoJSON feature as served by GET /zones (coordinates are [lon, lat]).
+type ZoneFeature = {
+  properties: { name: string; type: "ECA" | "HRA"; color: string };
+  geometry: { type: "Polygon"; coordinates: number[][][] };
+};
 
 type Props = {
-  // The real sea lane as [lat, lon] points (from the /optimize response).
   routeCoords: LatLon[];
   originName?: string;
   destName?: string;
-  ecaZones?: EcaZone[];
+  legsWeather?: LegWeather[] | null;
 };
 
-const ROUTE_COLOR = "#2563eb"; // blue: the sea lane
-const ECA_COLOR = "#16a34a"; // green: emission control area
+const ROUTE_TEAL = "#2dd4bf";
+const ROUTE_STORM = "#ef4444";
+const CASING = "#ffffff";
+const STORM_FACTOR = 1.2; // legs above this are drawn red
 
-// Imperatively fit the map to the route whenever the coordinates change.
+// Custom markers: teal dot for the start, checkered flag for the destination.
+const ORIGIN_ICON = L.divIcon({
+  className: "",
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:${ROUTE_TEAL};border:2px solid #fff;box-shadow:0 0 5px rgba(0,0,0,.6)"></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+const DEST_ICON = L.divIcon({
+  className: "",
+  html: `<div style="font-size:20px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))">🏁</div>`,
+  iconSize: [20, 20],
+  iconAnchor: [3, 18],
+});
+
+// Split the full polyline into k contiguous chunks matching the backend's leg
+// resampling, so each leg segment can be colored by its weather.
+function legChunks(coords: LatLon[], k: number): LatLon[][] {
+  const nSeg = coords.length - 1;
+  const chunks: LatLon[][] = [];
+  for (let i = 0; i < k; i++) {
+    const start = Math.floor((i * nSeg) / k);
+    const end = Math.floor(((i + 1) * nSeg) / k);
+    chunks.push(coords.slice(start, end + 1));
+  }
+  return chunks;
+}
+
+// Fit the map to the route whenever the coordinates change.
 function FitBounds({ coords }: { coords: LatLon[] }) {
   const map = useMap();
   useEffect(() => {
     if (coords.length > 0) {
-      map.fitBounds(coords as L.LatLngBoundsExpression, { padding: [20, 20] });
+      map.fitBounds(coords as L.LatLngBoundsExpression, { padding: [30, 30] });
     }
   }, [coords, map]);
   return null;
 }
 
 /**
- * Leaflet map of the real sea route: OpenStreetMap tiles, the route polyline,
- * and markers at the origin and destination only. The view auto-fits the route.
+ * Hero map: CARTO dark basemap + OpenSeaMap seamark overlay, ECA/HRA zone
+ * polygons, and the weather-colored route with a white casing. Layers are
+ * toggleable via the top-right control.
  */
 export default function RouteMap({
   routeCoords,
   originName,
   destName,
-  ecaZones = [],
+  legsWeather,
 }: Props) {
+  const [zones, setZones] = useState<ZoneFeature[]>([]);
+
+  useEffect(() => {
+    fetch(`${API}/zones`)
+      .then((r) => r.json())
+      .then((fc: { features: ZoneFeature[] }) => setZones(fc.features))
+      .catch(() => setZones([]));
+  }, []);
+
   const hasRoute = routeCoords.length > 0;
   const origin = hasRoute ? routeCoords[0] : null;
   const dest = hasRoute ? routeCoords[routeCoords.length - 1] : null;
 
+  const ecaZones = zones.filter((z) => z.properties.type === "ECA");
+  const hraZones = zones.filter((z) => z.properties.type === "HRA");
+
+  // GeoJSON rings are [lon, lat]; Leaflet wants [lat, lon].
+  const ring = (z: ZoneFeature): LatLon[] =>
+    z.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
+
+  // Colored leg segments (red where the live weather factor is stormy).
+  const k = legsWeather?.length ?? 0;
+  const chunks = hasRoute && k > 0 ? legChunks(routeCoords, k) : [];
+
   return (
-    <div className="pruva-card overflow-hidden h-full min-h-[400px]">
+    <div className="pruva-card overflow-hidden h-full min-h-[460px]">
       <MapContainer
         center={[25, 40]}
         zoom={3}
         scrollWheelZoom={false}
-        style={{ height: "100%", minHeight: "400px", width: "100%" }}
+        style={{ height: "100%", minHeight: "460px", width: "100%" }}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <LayersControl position="topright">
+          <LayersControl.BaseLayer checked name="CARTO Koyu">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="CARTO Voyager">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            />
+          </LayersControl.BaseLayer>
 
-        {/* ECA boxes (semi-transparent green) drawn under the route. */}
-        {ecaZones.map((z) => {
-          const [latMin, latMax, lonMin, lonMax] = z.bbox;
-          const bounds: [LatLon, LatLon] = [
-            [latMin, lonMin],
-            [latMax, lonMax],
-          ];
-          return (
-            <Rectangle
-              key={z.name}
-              bounds={bounds}
-              pathOptions={{ color: ECA_COLOR, weight: 1, fillOpacity: 0.12 }}
-            >
-              <Tooltip>{z.name}</Tooltip>
-            </Rectangle>
-          );
-        })}
+          <LayersControl.Overlay checked name="Deniz İşaretleri (OpenSeaMap)">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
+              url="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
+            />
+          </LayersControl.Overlay>
+
+          <LayersControl.Overlay checked name="ECA Bölgeleri">
+            <LayerGroup>
+              {ecaZones.map((z) => (
+                <Polygon
+                  key={z.properties.name}
+                  positions={ring(z)}
+                  pathOptions={{
+                    color: z.properties.color,
+                    weight: 1.5,
+                    fillColor: z.properties.color,
+                    fillOpacity: 0.12,
+                  }}
+                >
+                  <Tooltip>{z.properties.name}</Tooltip>
+                </Polygon>
+              ))}
+            </LayerGroup>
+          </LayersControl.Overlay>
+
+          <LayersControl.Overlay checked name="Korsanlık (HRA)">
+            <LayerGroup>
+              {hraZones.map((z) => (
+                <Polygon
+                  key={z.properties.name}
+                  positions={ring(z)}
+                  pathOptions={{
+                    color: z.properties.color,
+                    weight: 1.5,
+                    fillColor: z.properties.color,
+                    fillOpacity: 0.15,
+                    dashArray: "6 4",
+                  }}
+                >
+                  <Tooltip>{z.properties.name}</Tooltip>
+                </Polygon>
+              ))}
+            </LayerGroup>
+          </LayersControl.Overlay>
+        </LayersControl>
 
         {hasRoute && (
           <>
-            <Polyline positions={routeCoords} pathOptions={{ color: ROUTE_COLOR, weight: 3 }} />
+            {/* White casing underneath for contrast on the dark basemap. */}
+            <Polyline
+              positions={routeCoords}
+              pathOptions={{ color: CASING, weight: 7, opacity: 0.55 }}
+            />
+            {chunks.length > 0 ? (
+              chunks.map((chunk, i) => {
+                const storm = (legsWeather?.[i]?.factor ?? 1.0) > STORM_FACTOR;
+                return (
+                  <Polyline
+                    key={i}
+                    positions={chunk}
+                    pathOptions={{
+                      color: storm ? ROUTE_STORM : ROUTE_TEAL,
+                      weight: 4,
+                    }}
+                  />
+                );
+              })
+            ) : (
+              <Polyline
+                positions={routeCoords}
+                pathOptions={{ color: ROUTE_TEAL, weight: 4 }}
+              />
+            )}
+
             {origin && (
-              <Marker position={origin}>
+              <Marker position={origin} icon={ORIGIN_ICON}>
                 <Popup>{originName ?? "Kalkış"}</Popup>
               </Marker>
             )}
             {dest && (
-              <Marker position={dest}>
+              <Marker position={dest} icon={DEST_ICON}>
                 <Popup>{destName ?? "Varış"}</Popup>
               </Marker>
             )}
