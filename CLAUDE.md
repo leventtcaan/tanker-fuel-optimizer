@@ -77,4 +77,21 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - page.tsx renders the 3 below raw text when result exists.
       - gotcha: recharts 3 Tooltip formatter type strict -> drop ": number" annot.
       - npm run build OK. bundle 193kB first load (recharts).
-- [ ] Phase 5c — NEXT = map. (define when start)
+- [x] Phase 5c — Leaflet map + real Med route + haversine. DONE. build passes.
+      - npm i react-leaflet@4 (v5 needs React19, we are 18) + leaflet + @types/leaflet.
+      - app/lib/voyageRoute.ts: WAYPOINTS (Gibraltar/Sardinia/Sicily/Aliağa),
+        haversine (R=3440.065 nm), buildLegs -> 3 legs from 4 waypoints.
+        GOTCHA: could NOT name it route.ts -> Next App Router reserves route.ts as
+        a Route Handler (must export GET/POST). renamed to voyageRoute.ts.
+      - app/components/RouteMap.tsx: MapContainer + TileLayer (OSM), markers+popups,
+        per-segment Polyline colored by weather (red storm / blue calm).
+        fixed broken default marker icon (mergeOptions w/ bundled PNGs).
+      - page.tsx: payload legs = buildLegs() (map + optimizer SAME voyage).
+        RouteMap via next/dynamic ssr:false (Leaflet uses window -> breaks SSR).
+        layout: map top, then 5b charts, then raw text.
+      - npm run build OK. bundle 195kB.
+      - HEADS UP: real route = 1606 nm (< old 2100). at berth_eta=175h the deadline
+        is loose (even vmin 10kn arrives 160.6h), so optimizer floors all legs to
+        10kn, no weather redistribution shown. valid result, not a bug. did NOT
+        change berth_eta (out of 5c scope) — revisit in 5d input form.
+- [ ] Phase 5d — NEXT = input form. (define when start)

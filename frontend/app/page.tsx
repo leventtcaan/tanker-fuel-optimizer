@@ -1,17 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import SpeedProfileChart from "./components/SpeedProfileChart";
 import FuelCompareChart from "./components/FuelCompareChart";
 import CiiBadge from "./components/CiiBadge";
+import { buildLegs } from "./lib/voyageRoute";
 
-// Hardcoded 3-leg storm voyage (matches the backend test scenario).
+// CRITICAL: Leaflet touches window/document at import time, which throws under
+// Next's server-side rendering. Load the map client-side only (ssr: false).
+const RouteMap = dynamic(() => import("./components/RouteMap"), { ssr: false });
+
+// Weather factor per leg (storm on the middle leg). The map and the optimizer
+// share this so the rendered route and the optimized legs are the SAME voyage.
+const WEATHER = [1.0, 1.4, 1.0];
+
+// Voyage payload. Leg distances come from the real Mediterranean route via
+// haversine (buildLegs), not a hardcoded array.
 const PAYLOAD = {
-  legs: [
-    { distance_nm: 700, weather: 1.0 },
-    { distance_nm: 700, weather: 1.4 },
-    { distance_nm: 700, weather: 1.0 },
-  ],
+  legs: buildLegs(WEATHER),
   dwt: 40000,
   service_speed: 14.0,
   berth_eta_h: 175.0,
@@ -82,44 +89,50 @@ export default function Home() {
         <p className="mt-4 text-red-600">Hata: {error}</p>
       )}
 
-      {result && (
-        <div className="mt-6 space-y-4">
-          <div className="border rounded p-4">
-            <h2 className="font-semibold mb-2">Baz Senaryo (sabit hız)</h2>
-            <p>Yakıt: {result.baseline.fuel_t.toFixed(2)} ton</p>
-            <p>CII Notu: {result.baseline.cii_grade}</p>
-          </div>
+      <div className="mt-6 space-y-4">
+        {/* Map on top: the voyage route, always visible. */}
+        <RouteMap weather={WEATHER} />
 
-          <div className="border rounded p-4">
-            <h2 className="font-semibold mb-2">Optimize Senaryo</h2>
-            <p>Yakıt: {result.optimized.fuel_t.toFixed(2)} ton</p>
-            <p>CII Notu: {result.optimized.cii_grade}</p>
-            <p>
-              Bacak Hızları:{" "}
-              {result.optimized.speeds
-                ? result.optimized.speeds.map((s) => s.toFixed(2)).join(", ") + " knot"
-                : "-"}
-            </p>
-          </div>
+        {result && (
+          <>
+            {/* Phase 5b: visual charts of the same result. */}
+            <SpeedProfileChart legs={PAYLOAD.legs} speeds={result.optimized.speeds} />
+            <FuelCompareChart
+              baselineFuel={result.baseline.fuel_t}
+              optimizedFuel={result.optimized.fuel_t}
+              savingPct={result.saving_pct}
+            />
+            <CiiBadge
+              baselineGrade={result.baseline.cii_grade}
+              optimizedGrade={result.optimized.cii_grade}
+            />
 
-          <div className="border rounded p-4 bg-green-50">
-            <p>Yakıt Tasarrufu: {result.saving_pct.toFixed(1)}%</p>
-            <p>CO2 Tasarrufu: {result.co2_saved_t.toFixed(2)} ton</p>
-          </div>
+            {/* Raw text fallback. */}
+            <div className="border rounded p-4">
+              <h2 className="font-semibold mb-2">Baz Senaryo (sabit hız)</h2>
+              <p>Yakıt: {result.baseline.fuel_t.toFixed(2)} ton</p>
+              <p>CII Notu: {result.baseline.cii_grade}</p>
+            </div>
 
-          {/* Phase 5b: visual charts of the same result */}
-          <SpeedProfileChart legs={PAYLOAD.legs} speeds={result.optimized.speeds} />
-          <FuelCompareChart
-            baselineFuel={result.baseline.fuel_t}
-            optimizedFuel={result.optimized.fuel_t}
-            savingPct={result.saving_pct}
-          />
-          <CiiBadge
-            baselineGrade={result.baseline.cii_grade}
-            optimizedGrade={result.optimized.cii_grade}
-          />
-        </div>
-      )}
+            <div className="border rounded p-4">
+              <h2 className="font-semibold mb-2">Optimize Senaryo</h2>
+              <p>Yakıt: {result.optimized.fuel_t.toFixed(2)} ton</p>
+              <p>CII Notu: {result.optimized.cii_grade}</p>
+              <p>
+                Bacak Hızları:{" "}
+                {result.optimized.speeds
+                  ? result.optimized.speeds.map((s) => s.toFixed(2)).join(", ") + " knot"
+                  : "-"}
+              </p>
+            </div>
+
+            <div className="border rounded p-4 bg-green-50">
+              <p>Yakıt Tasarrufu: {result.saving_pct.toFixed(1)}%</p>
+              <p>CO2 Tasarrufu: {result.co2_saved_t.toFixed(2)} ton</p>
+            </div>
+          </>
+        )}
+      </div>
     </main>
   );
 }
