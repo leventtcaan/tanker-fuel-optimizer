@@ -42,6 +42,30 @@ The verified-correct findings below describe the original cubic engine; they rem
 accurate for that deprecated path and for the unchanged CII/economics/optimizer
 structure (which consume fuel *tons* and are insulated from the model swap).
 
+## UPDATE — Phase F2: live wind into the formula (2026-06-23)
+
+The formula's Beaufort term (b2·B) and wind-angle term (b4·cos θ) are now driven
+by LIVE wind, not F1 placeholders.
+
+- `weather.py` now also fetches `wind_direction_10m` (with `wind_speed_10m`, in
+  m/s) and derives a Beaufort number via `wind_ms_to_beaufort` (standard scale,
+  0..12). On API timeout/error the leg falls back to B=0, wind_dir=None.
+- `routing.leg_bearings` gives each resampled leg's heading; per leg we compute
+  the relative wind angle (folded to 0..180, **0 = headwind, 180 = following**).
+- SIGN CONVENTION (documented in `voyage.wind_angle_rad_from`): with b4 = -0.048,
+  the angle is mapped so a **headwind increases** fuel (+0.048), a **following
+  wind decreases** it (-0.048), beam wind is neutral, and no-wind reproduces the
+  calm baseline. Verified empirically: at B=6, headwind 167 t > following 152 t >
+  B=0 calm 93 t on a 700 nm leg at 14 kn.
+- `legs_weather` now returns per-leg `{beaufort, wind_ms, wind_dir, bearing_deg,
+  theta_deg, ...}`. Legacy explicit-`legs` and `auto_weather=False` paths are
+  unaffected (B=0, angle=0 -> identical to F1).
+- APPROXIMATION (disclosed): wind is sampled at ONE representative midpoint per
+  leg, at the current time only (no along-leg or forecast-time variation) — same
+  caveat as the wave sampling in limitation #7 below. Beaufort is bucketed from a
+  point wind speed; theta uses the leg's straight-line heading, not the local
+  along-track tangent. Optimizer/CII/economics structure unchanged.
+
 ---
 
 ## SOLID (verified correct)

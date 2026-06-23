@@ -372,3 +372,27 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       FRONTEND (small, F1 surfacing only — reskin is F5): Sefer section +Draft Dm,
         +Drydock'tan gün, +Yük oranı slider (0-1). sent in /optimize payload.
         npm run build OK. bundle 199kB.
+- [x] Phase F2 — live wind -> Beaufort (b2·B) + wind-angle (b4·cosθ) in formula.
+      DONE. backend test green, build OK. fuel_model UNCHANGED (F1 already had
+      beaufort + wind_angle_rad params) — F2 just feeds real values.
+      BACKEND:
+      - weather.py: fetch wind_direction_10m too (wind_speed_unit=ms). new
+        wind_ms_to_beaufort(ms)->0..12 (standard scale). dict now has beaufort +
+        wind_dir. fallback = B0, wind_dir None (never crash).
+      - routing.py: leg_bearing(p0,p1) compass heading; leg_bearings(coords,k)
+        per-leg heading (same chunk scheme as midpoints). resample_to_legs +beaufort
+        +wind_angle_rad lists.
+      - voyage.py: Leg +beaufort +wind_angle_rad. relative_wind_deg (folded 0..180,
+        0=headwind 180=following). wind_angle_rad_from: SIGN CONV — b4=-0.048, map
+        angle so headwind->π->cos -1->+0.048 (more fuel), following->0->cos1->-0.048
+        (less), beam neutral, no-wind=calm baseline. leg_fuel passes B + angle.
+      - main.py: leg_bearings + per-leg theta from wind_dir vs heading; legs_weather
+        +bearing_deg +theta_deg. auto_weather=False / legacy legs unchanged.
+      VERIFY (.venv): legacy still E->D 25.0% (wind defaults = F1 exactly). İst->Sing
+        live auto_weather: B per leg 2-5, theta computed, E->E 19.4% $122625 (live
+        wind added fuel). sign check 700nm@14kn B6: headwind 167t > following 152t >
+        calm 93t. monotonic+feasible intact. CII/economics untouched.
+      AUDIT.md: F2 note — wind/Beaufort live, theta from bearing vs wind dir,
+        approx (single midpoint, current-time, straight-line heading).
+      FRONTEND (small): per-leg weather line now shows "· Bft N ↘" (windArrow =
+        toward dir) next to wave + ● canlı. npm run build OK. bundle 199kB.

@@ -42,7 +42,15 @@ type OptimizeResponse = {
   legs_weather: LegWeather[] | null;
 };
 
-type LegWeather = { factor: number; wave_m: number | null; source: string };
+type LegWeather = {
+  factor: number;
+  wave_m: number | null;
+  source: string;
+  beaufort?: number;
+  wind_ms?: number | null;
+  wind_dir?: number | null;
+  theta_deg?: number | null;
+};
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -77,6 +85,12 @@ const DEFAULT_ETS_PRICE = 85.0;
 
 // Thousands-separated integer formatting (Turkish locale).
 const fmt = (n: number) => Math.round(n).toLocaleString("tr-TR");
+
+// Arrow pointing where the wind is blowing TOWARD (Open-Meteo gives the FROM
+// direction, so we add 180°). Used as a compact per-leg wind indicator.
+const WIND_ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
+const windArrow = (fromDeg: number) =>
+  WIND_ARROWS[Math.round((((fromDeg + 180) % 360) / 45)) % 8];
 
 // Collapsible input group with a clickable header.
 function Section({
@@ -464,7 +478,14 @@ export default function Home() {
                 {result.legs_weather.map((lw, i) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <span className="text-[var(--muted)]">
-                      Bacak {i + 1}: {lw.wave_m != null ? `${lw.wave_m} m dalga` : "veri yok"}
+                      Bacak {i + 1}:{" "}
+                      {lw.wave_m != null ? `${lw.wave_m} m dalga` : "veri yok"}
+                      {lw.beaufort != null && (
+                        <span className="text-[var(--text)]">
+                          {" · "}Bft {lw.beaufort}
+                          {lw.wind_dir != null && ` ${windArrow(lw.wind_dir)}`}
+                        </span>
+                      )}
                     </span>
                     {lw.source === "open-meteo" ? (
                       <span className="text-[var(--accent)]">● canlı</span>

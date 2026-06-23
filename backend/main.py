@@ -11,11 +11,11 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from voyage import Leg, leg_time
+from voyage import Leg, leg_time, relative_wind_deg, wind_angle_rad_from
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
 from ports import curated_ports, search_ports, resolve_latlon, nearest_port
-from routing import get_sea_route, resample_to_legs, leg_midpoints
+from routing import get_sea_route, resample_to_legs, leg_midpoints, leg_bearings
 from weather import fetch_leg_weather
 from economics import (
     fuel_cost_usd,
@@ -157,13 +157,35 @@ async def optimize(req: OptimizeRequest):
 
         if req.auto_weather:
             # Live weather overrides the manual sliders: query each leg's midpoint
-            # concurrently and turn wave height into the per-leg weather factor.
+            # concurrently and turn the result into the per-leg fuel inputs —
+            # wave height -> weather factor (Hs), wind speed -> Beaufort, and
+            # wind direction vs the leg heading -> the wind/heading angle.
             mids = leg_midpoints(route_coords, req.num_legs)
+            bearings = leg_bearings(route_coords, req.num_legs)
             legs_weather = await fetch_leg_weather(mids)
-            weather = [lw["factor"] for lw in legs_weather]
+
+            weather = []
+            beaufort = []
+            wind_angle = []
+            for lw, brng in zip(legs_weather, bearings):
+                weather.append(lw["factor"])
+                beaufort.append(lw.get("beaufort") or 0.0)
+                wind_dir = lw.get("wind_dir")
+                if wind_dir is not None:
+                    theta_deg = relative_wind_deg(wind_dir, brng)
+                    wind_angle.append(wind_angle_rad_from(wind_dir, brng))
+                else:
+                    theta_deg = None
+                    wind_angle.append(0.0)  # no wind data -> calm baseline
+                # Enrich the per-leg meta returned to the client.
+                lw["bearing_deg"] = round(brng, 1)
+                lw["theta_deg"] = round(theta_deg, 1) if theta_deg is not None else None
+            legs = resample_to_legs(
+                route_coords, req.num_legs, weather, beaufort, wind_angle
+            )
         else:
             weather = req.weather
-        legs = resample_to_legs(route_coords, req.num_legs, weather)
+            legs = resample_to_legs(route_coords, req.num_legs, weather)
     elif req.legs:
         # Legacy explicit-legs path (backward compatible).
         legs = [Leg(l.distance_nm, l.weather) for l in req.legs]

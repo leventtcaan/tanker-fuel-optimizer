@@ -60,24 +60,31 @@ def get_sea_route(origin_latlon, dest_latlon):
     return {"coords_latlon": coords_latlon, "distance_nm": distance_nm}
 
 
-def resample_to_legs(coords_latlon, k=6, weather=None):
+def resample_to_legs(coords_latlon, k=6, weather=None, beaufort=None, wind_angle_rad=None):
     """Split a [lat, lon] polyline into k contiguous legs for the optimizer.
 
     The route polyline can have many points (~78); the optimizer works on a
     handful of legs. We divide the polyline's point-segments into k roughly equal
     contiguous chunks and sum the haversine distance within each chunk to get
-    that leg's distance. Weather defaults to calm (1.0) for every leg.
+    that leg's distance. Environmental fields default to calm.
 
     Args:
         coords_latlon: list of [lat, lon] points along the route.
         k: number of legs to produce.
         weather: optional list of k weather factors; default all 1.0.
+        beaufort: optional list of k Beaufort numbers; default all 0.
+        wind_angle_rad: optional list of k wind/heading angles (radians) for the
+            fuel model's b4 term; default all 0.0 (calm/no-wind baseline).
 
     Returns:
-        list of k Leg objects (distance_nm, weather), compatible with optimizer.
+        list of k Leg objects, compatible with the optimizer.
     """
     if weather is None:
         weather = [1.0] * k
+    if beaufort is None:
+        beaufort = [0.0] * k
+    if wind_angle_rad is None:
+        wind_angle_rad = [0.0] * k
 
     # Per-segment haversine distances between consecutive polyline points.
     seg_distances = [
@@ -98,9 +105,53 @@ def resample_to_legs(coords_latlon, k=6, weather=None):
         end = (leg_index + 1) * n_segments // k
         leg_distance = sum(seg_distances[start:end])
         leg_weather = weather[leg_index] if leg_index < len(weather) else 1.0
-        legs.append(Leg(leg_distance, leg_weather))
+        leg_bft = beaufort[leg_index] if leg_index < len(beaufort) else 0.0
+        leg_wind = wind_angle_rad[leg_index] if leg_index < len(wind_angle_rad) else 0.0
+        legs.append(Leg(leg_distance, leg_weather, leg_bft, leg_wind))
 
     return legs
+
+
+def leg_bearing(p_start, p_end):
+    """Initial great-circle compass bearing from p_start to p_end, in degrees.
+
+    Bearing is measured clockwise from true north (0 = north, 90 = east), i.e.
+    the ship's heading along the leg. Both points are [lat, lon].
+    """
+    lat1, lon1 = math.radians(p_start[0]), math.radians(p_start[1])
+    lat2, lon2 = math.radians(p_end[0]), math.radians(p_end[1])
+    d_lon = lon2 - lon1
+    x = math.sin(d_lon) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(d_lon)
+    return (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
+
+
+def leg_bearings(coords_latlon, k):
+    """Representative heading (deg) for each of the k resampled legs.
+
+    Splits the polyline into k contiguous chunks (same scheme as
+    resample_to_legs / leg_midpoints) and returns the bearing from each chunk's
+    first point to its last point — the leg's overall heading, used to compute
+    the wind/heading angle for the fuel model.
+
+    Args:
+        coords_latlon: list of [lat, lon] points along the route.
+        k: number of legs.
+
+    Returns:
+        list of k bearings in degrees (0..360).
+    """
+    n_points = len(coords_latlon)
+    n_segments = n_points - 1
+    bearings = []
+    for leg_index in range(k):
+        start = leg_index * n_segments // k
+        end = (leg_index + 1) * n_segments // k
+        end = min(end, n_points - 1)
+        if end <= start:
+            end = min(start + 1, n_points - 1)
+        bearings.append(leg_bearing(coords_latlon[start], coords_latlon[end]))
+    return bearings
 
 
 def leg_midpoints(coords_latlon, k):
