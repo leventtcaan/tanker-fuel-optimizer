@@ -60,7 +60,14 @@ def get_sea_route(origin_latlon, dest_latlon):
     return {"coords_latlon": coords_latlon, "distance_nm": distance_nm}
 
 
-def resample_to_legs(coords_latlon, k=6, weather=None, beaufort=None, wind_angle_rad=None):
+def resample_to_legs(
+    coords_latlon,
+    k=6,
+    weather=None,
+    beaufort=None,
+    wind_angle_rad=None,
+    current_along=None,
+):
     """Split a [lat, lon] polyline into k contiguous legs for the optimizer.
 
     The route polyline can have many points (~78); the optimizer works on a
@@ -75,6 +82,8 @@ def resample_to_legs(coords_latlon, k=6, weather=None, beaufort=None, wind_angle
         beaufort: optional list of k Beaufort numbers; default all 0.
         wind_angle_rad: optional list of k wind/heading angles (radians) for the
             fuel model's b4 term; default all 0.0 (calm/no-wind baseline).
+        current_along: optional list of k along-track currents (knots, signed;
+            + following, - head); default all 0.0 (no-current baseline).
 
     Returns:
         list of k Leg objects, compatible with the optimizer.
@@ -85,6 +94,8 @@ def resample_to_legs(coords_latlon, k=6, weather=None, beaufort=None, wind_angle
         beaufort = [0.0] * k
     if wind_angle_rad is None:
         wind_angle_rad = [0.0] * k
+    if current_along is None:
+        current_along = [0.0] * k
 
     # Per-segment haversine distances between consecutive polyline points.
     seg_distances = [
@@ -107,7 +118,8 @@ def resample_to_legs(coords_latlon, k=6, weather=None, beaufort=None, wind_angle
         leg_weather = weather[leg_index] if leg_index < len(weather) else 1.0
         leg_bft = beaufort[leg_index] if leg_index < len(beaufort) else 0.0
         leg_wind = wind_angle_rad[leg_index] if leg_index < len(wind_angle_rad) else 0.0
-        legs.append(Leg(leg_distance, leg_weather, leg_bft, leg_wind))
+        leg_cur = current_along[leg_index] if leg_index < len(current_along) else 0.0
+        legs.append(Leg(leg_distance, leg_weather, leg_bft, leg_wind, leg_cur))
 
     return legs
 

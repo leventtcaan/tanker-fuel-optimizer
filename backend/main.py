@@ -11,7 +11,14 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from voyage import Leg, leg_time, relative_wind_deg, wind_angle_rad_from
+from voyage import (
+    Leg,
+    leg_time,
+    leg_sog,
+    relative_wind_deg,
+    wind_angle_rad_from,
+    current_along_kn,
+)
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
 from ports import curated_ports, search_ports, resolve_latlon, nearest_port
@@ -167,6 +174,7 @@ async def optimize(req: OptimizeRequest):
             weather = []
             beaufort = []
             wind_angle = []
+            current = []
             for lw, brng in zip(legs_weather, bearings):
                 weather.append(lw["factor"])
                 beaufort.append(lw.get("beaufort") or 0.0)
@@ -177,11 +185,16 @@ async def optimize(req: OptimizeRequest):
                 else:
                     theta_deg = None
                     wind_angle.append(0.0)  # no wind data -> calm baseline
+                # Project the ocean current onto this leg's heading (+ following).
+                cur_kn = lw.get("current_kn") or 0.0
+                cur_dir = lw.get("current_dir")
+                along = current_along_kn(cur_kn, cur_dir, brng) if cur_dir is not None else 0.0
+                current.append(along)
                 # Enrich the per-leg meta returned to the client.
                 lw["bearing_deg"] = round(brng, 1)
                 lw["theta_deg"] = round(theta_deg, 1) if theta_deg is not None else None
             legs = resample_to_legs(
-                route_coords, req.num_legs, weather, beaufort, wind_angle
+                route_coords, req.num_legs, weather, beaufort, wind_angle, current
             )
         else:
             weather = req.weather
@@ -209,6 +222,11 @@ async def optimize(req: OptimizeRequest):
         req.load,
         req.days_since_drydock,
     )
+
+    # Report each leg's optimized speed over ground (STW + along-track current).
+    if legs_weather is not None:
+        for lw, leg, stw in zip(legs_weather, legs, opt["speeds"]):
+            lw["sog_kn"] = round(leg_sog(stw, leg), 2)
 
     base_cii = rate_voyage(base["total_fuel"], req.dwt, distance, req.year)
     opt_cii = rate_voyage(opt["total_fuel"], req.dwt, distance, req.year)

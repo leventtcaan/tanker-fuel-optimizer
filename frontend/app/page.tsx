@@ -50,6 +50,9 @@ type LegWeather = {
   wind_ms?: number | null;
   wind_dir?: number | null;
   theta_deg?: number | null;
+  current_kn?: number | null;
+  current_dir?: number | null;
+  sog_kn?: number | null;
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -91,6 +94,9 @@ const fmt = (n: number) => Math.round(n).toLocaleString("tr-TR");
 const WIND_ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
 const windArrow = (fromDeg: number) =>
   WIND_ARROWS[Math.round((((fromDeg + 180) % 360) / 45)) % 8];
+// Ocean current direction is already the direction it flows TOWARD, so no offset.
+const currentArrow = (towardDeg: number) =>
+  WIND_ARROWS[Math.round((towardDeg % 360) / 45) % 8];
 
 // Collapsible input group with a clickable header.
 function Section({
@@ -476,21 +482,34 @@ export default function Home() {
             {autoWeather && result?.legs_weather && (
               <div className="space-y-0.5">
                 {result.legs_weather.map((lw, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--muted)]">
-                      Bacak {i + 1}:{" "}
-                      {lw.wave_m != null ? `${lw.wave_m} m dalga` : "veri yok"}
-                      {lw.beaufort != null && (
-                        <span className="text-[var(--text)]">
-                          {" · "}Bft {lw.beaufort}
-                          {lw.wind_dir != null && ` ${windArrow(lw.wind_dir)}`}
-                        </span>
+                  <div key={i} className="text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--muted)]">
+                        Bacak {i + 1}:{" "}
+                        {lw.wave_m != null ? `${lw.wave_m} m dalga` : "veri yok"}
+                        {lw.beaufort != null && (
+                          <span className="text-[var(--text)]">
+                            {" · "}Bft {lw.beaufort}
+                            {lw.wind_dir != null && ` ${windArrow(lw.wind_dir)}`}
+                          </span>
+                        )}
+                      </span>
+                      {lw.source === "open-meteo" ? (
+                        <span className="text-[var(--accent)]">● canlı</span>
+                      ) : (
+                        <span className="text-[var(--muted)]">○ varsayılan</span>
                       )}
-                    </span>
-                    {lw.source === "open-meteo" ? (
-                      <span className="text-[var(--accent)]">● canlı</span>
-                    ) : (
-                      <span className="text-[var(--muted)]">○ varsayılan</span>
+                    </div>
+                    {(lw.current_kn != null || lw.sog_kn != null) && (
+                      <div className="text-[var(--muted)]">
+                        {lw.current_kn != null && (
+                          <>
+                            Akıntı {lw.current_kn} kn
+                            {lw.current_dir != null && ` ${currentArrow(lw.current_dir)}`}
+                          </>
+                        )}
+                        {lw.sog_kn != null && <> {" · "}SOG {lw.sog_kn} kn</>}
+                      </div>
                     )}
                   </div>
                 ))}

@@ -396,3 +396,25 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         approx (single midpoint, current-time, straight-line heading).
       FRONTEND (small): per-leg weather line now shows "· Bft N ↘" (windArrow =
         toward dir) next to wave + ● canlı. npm run build OK. bundle 199kB.
+- [x] Phase F3 — live ocean current -> SOG (speed-over-ground) model. DONE.
+      backend test green, build OK. current affects TIME (fuel still STW-only).
+      BACKEND:
+      - weather.py: marine fetch +ocean_current_velocity(km/h->kn *0.539957)
+        +ocean_current_direction. dict +current_kn +current_dir. fallback cur 0.
+      - voyage.py: Leg +current_along_kn (signed: + following, - head). V_MIN_SOG
+        2.0. current_along_kn(Vc,dir,brng)=Vc·cos(brng-dir) (dir=toward, ocean
+        conv). leg_sog(V,leg)=max(V+current_along, 2.0). leg_time NOW uses SOG.
+      - optimizer.py UNCHANGED in shape — minimizes ΣlegFuel (STW) + JIT constraint
+        & min_time guard go via leg_time -> auto SOG. following lets STW drop (less
+        fuel), head forces STW up (more), head raises min_time.
+      - routing.py resample_to_legs +current_along list. main.py: project current
+        per leg via bearing; legs_weather +current_kn +current_dir +sog_kn(opt).
+      VERIFY (.venv): controlled 700nm@STW12: foll SOG14/50h, none 12/58h, head
+        10/70h (fuel same — STW fixed). optimizer fixed-ETA 3x700: foll 163.5t <
+        none 209.3t < head 260.3t. min_time none131h < head(-3)161h. legacy/
+        auto_off byte-identical to F2 (E->D 25.0%). İst->Sing live: per-leg cur
+        ~0.2-1.0kn, SOG vs STW sane, E->E 23.1% $146178, feasible.
+      AUDIT.md: F3 note — live current, SOG model, approx (surface only, single
+        midpoint, current-time, straight-line bearing; current=time not fuel).
+      FRONTEND (small): per-leg sub-line "Akıntı X kn ↗ · SOG Y kn" (currentArrow
+        = toward dir, no 180 offset). npm run build OK. bundle 199kB.

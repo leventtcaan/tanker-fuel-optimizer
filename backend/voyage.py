@@ -30,12 +30,22 @@ class Leg:
         wind_angle_rad: pre-converted wind/heading angle for the fuel model's
             b4*cos(theta) term (see `wind_angle_rad_from`). Default 0.0 reproduces
             the calm/no-wind case.
+        current_along_kn: along-track ocean current, in knots, signed so that
+            POSITIVE = a following current (speeds the ship up) and NEGATIVE =
+            a head current (slows it down). Affects SOG/time, not fuel. Default
+            0.0 reproduces the no-current case.
     """
 
     distance_nm: float
     weather: float = 1.0
     beaufort: float = 0.0
     wind_angle_rad: float = 0.0
+    current_along_kn: float = 0.0
+
+
+# Floor on speed over ground: even against a strong current the ship still makes
+# some headway, so SOG is clamped here to avoid a zero/negative effective speed.
+V_MIN_SOG = 2.0
 
 
 def weather_factor_to_wave_m(weather):
@@ -123,14 +133,51 @@ def leg_fuel(speed_kn, leg, draft_m=12.0, load=0.5, days_since_dd=180.0, fc0=FC0
     return daily * days
 
 
+def current_along_kn(current_kn, current_dir_deg, bearing_deg):
+    """Along-track component of an ocean current, in knots (signed).
+
+    `current_dir_deg` is the oceanographic direction the current flows TOWARD
+    (Open-Meteo convention); `bearing_deg` is the ship's heading. Projecting the
+    current onto the heading:
+
+        along = current_kn * cos(bearing - current_dir)
+
+    so a current flowing the same way the ship heads (current_dir == bearing)
+    gives +current_kn (FOLLOWING current, speeds the ship up), and an opposing
+    current gives a negative value (HEAD current, slows it down).
+    """
+    return current_kn * math.cos(math.radians(bearing_deg - current_dir_deg))
+
+
+def leg_sog(speed_kn, leg):
+    """Speed over ground (kn) for a leg: STW plus the along-track current.
+
+    The optimizer chooses speed through water (STW), which drives fuel; the
+    ground speed that actually determines transit time is STW plus the leg's
+    along-track current, floored at `V_MIN_SOG` so it never goes non-positive.
+
+    Args:
+        speed_kn: speed through the water (STW) on this leg, in knots.
+        leg: the Leg being sailed (carries current_along_kn).
+
+    Returns:
+        Speed over ground, in knots.
+    """
+    return max(speed_kn + leg.current_along_kn, V_MIN_SOG)
+
+
 def leg_time(speed_kn, leg):
     """Time to sail one leg, in hours.
+
+    Uses speed over ground (STW + along-track current), not STW, so a following
+    current shortens the leg and a head current lengthens it. With no current the
+    SOG equals the STW and this reduces to distance / speed exactly as before.
 
     Args:
         speed_kn: ship speed through the water on this leg, in knots.
         leg: the Leg being sailed.
 
     Returns:
-        Sailing time for the leg, in hours (distance / speed).
+        Sailing time for the leg, in hours (distance / SOG).
     """
-    return leg.distance_nm / speed_kn
+    return leg.distance_nm / leg_sog(speed_kn, leg)

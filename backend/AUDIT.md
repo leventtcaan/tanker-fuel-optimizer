@@ -66,6 +66,33 @@ by LIVE wind, not F1 placeholders.
   point wind speed; theta uses the leg's straight-line heading, not the local
   along-track tangent. Optimizer/CII/economics structure unchanged.
 
+## UPDATE — Phase F3: live ocean current + SOG model (2026-06-23)
+
+Transit time is now driven by speed over ground (SOG), not speed through water
+(STW), so ocean current changes effective time and therefore the optimizer's
+fuel/time tradeoff ("against vs with the current").
+
+- `weather.py` also fetches `ocean_current_velocity` (km/h -> knots) and
+  `ocean_current_direction`; per-leg dict gains `current_kn` + `current_dir`.
+  Fallback -> current_kn=0, current_dir=None.
+- `voyage.py`: each `Leg` carries `current_along_kn` (signed: + following,
+  - head). `current_along_kn(Vc, dir, bearing) = Vc·cos(bearing - dir)` projects
+  the current onto the heading. `leg_sog(V, leg) = max(V + current_along, 2.0)`
+  (V_MIN_SOG floor so SOG is never non-positive). `leg_time` now uses SOG.
+- The optimizer is unchanged in shape: it minimises Σ leg_fuel (still on STW) and
+  its JIT time constraint + `min_time_h` feasibility guard both go through
+  `leg_time`, so they automatically use SOG. Verified: with a head current the
+  min-time rises (131 -> 161 h at vmax), with a following current the optimizer
+  can slow STW and burn less (163 t following < 209 t none < 260 t head on a
+  fixed-ETA 3×700 nm voyage).
+- `legs_weather` now also returns `current_kn`, `current_dir`, and the optimized
+  `sog_kn`. No-current / `auto_weather=False` / legacy paths are byte-identical to
+  F2 (current_along defaults to 0).
+- APPROXIMATIONS (disclosed): SURFACE current only, sampled at ONE representative
+  midpoint per leg, at the current time, and projected onto the leg's
+  straight-line bearing (no along-track or forecast-time variation). Current
+  affects time/SOG only — it is not separately added to the fuel formula.
+
 ---
 
 ## SOLID (verified correct)
