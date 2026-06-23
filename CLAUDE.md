@@ -478,3 +478,19 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         route_coords bbox/gates; CO2 = fuel×CF (same factor engine uses, display
         only); prices clearly reference. npm run build OK. bundle 201kB.
       MVP feature + visually complete.
+- [x] CO₂ emission reduction = PRIMARY metric (display only). DONE. build OK.
+      PURE PRESENTATION — no logic/number/endpoint/formula change. page.tsx only.
+      brief goal = fuel saving AND ~5% CO2 reduction; CO2 was secondary -> now a
+      hero peer of Para Tasarrufu.
+      - display-only compute from EXISTING fields: co2_baseline=baseline.fuel_t*
+        3.114, co2_optimized=optimized.fuel_t*3.114, co2_saved, co2_reduction_pct
+        (same CF the engine uses; no recompute of any result).
+      - new "CO₂ Emisyon Azaltımı" card (green --grade-a accent) right after Para
+        Tasarrufu: big "%Z azaltım", "X t -> Y t CO₂ (−W t)", subtitle
+        "Hedef: ≥%5 — Ulaşılan: %Z" (✓ if met). honest (no fake target logic).
+        muted state when co2_saved<=0.
+      - CII pill REFRAMED as regulatory layer: eyebrow "Regülasyon · IMO CII"
+        above CiiBadge; attained X->Y + % to next grade kept.
+      - right panel order: Para Tasarrufu + CO₂ Azaltımı (heroes) -> Sefer Tahmini
+        -> Regülasyon/CII -> charts -> alternatives.
+      - npm run build OK. bundle 201kB.

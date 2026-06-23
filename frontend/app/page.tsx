@@ -571,6 +571,14 @@ export default function Home() {
   const warnTone = (t: "e" | "c" | "muted") =>
     t === "e" ? "var(--grade-e)" : t === "c" ? "var(--grade-c)" : "var(--muted)";
 
+  // CO2 emission reduction — DISPLAY ONLY, from existing fuel_t fields and the
+  // same carbon factor the engine uses. No engine call, no new endpoint.
+  const co2Baseline = (displayResult?.baseline.fuel_t ?? 0) * CO2_PER_T;
+  const co2Optimized = (displayResult?.optimized.fuel_t ?? 0) * CO2_PER_T;
+  const co2Saved = co2Baseline - co2Optimized;
+  const co2ReductionPct = co2Baseline > 0 ? (co2Saved / co2Baseline) * 100 : 0;
+  const CO2_TARGET_PCT = 5; // brief's ~5% reduction goal (reference only)
+
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* Top bar: PRUVA wordmark + tagline + honest DEMO pill. */}
@@ -1016,6 +1024,39 @@ export default function Home() {
                 )}
               </div>
 
+              {/* CO₂ emission reduction — primary metric (peer of money saved).
+                  The project goal is fuel saving AND emission reduction. */}
+              <div className="pruva-card p-5">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  CO₂ Emisyon Azaltımı
+                </p>
+                {co2Saved > 0 ? (
+                  <>
+                    <p className="text-4xl font-extrabold text-[var(--grade-a)] mt-1">
+                      %{co2ReductionPct.toFixed(1)} azaltım
+                    </p>
+                    <p className="text-sm text-[var(--muted)] mt-1">
+                      {fmt(co2Baseline)} t → {fmt(co2Optimized)} t CO₂ (−
+                      {fmt(co2Saved)} t)
+                    </p>
+                    <p className="text-xs text-[var(--muted)] mt-1">
+                      Hedef: ≥%{CO2_TARGET_PCT} — Ulaşılan: %
+                      {co2ReductionPct.toFixed(1)}{" "}
+                      {co2ReductionPct >= CO2_TARGET_PCT ? "✓" : ""}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-semibold text-[var(--muted)] mt-1">
+                      %{co2ReductionPct.toFixed(1)} azaltım
+                    </p>
+                    <p className="text-sm text-[var(--muted)] mt-1">
+                      Bu ETA&apos;da emisyon azaltımı yok — ETA&apos;yı artırın.
+                    </p>
+                  </>
+                )}
+              </div>
+
               {/* SEFER TAHMİNİ — route header, warnings, zone chips, metric grid. */}
               <div className="pruva-card p-4 space-y-3">
                 <div>
@@ -1111,8 +1152,12 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* CII pill (own card) + attained drop — improvement visible even
-                  when the A-E grade holds (e.g. E -> E). */}
+              {/* Regulatory layer — the legal meaning of the reduction above
+                  (IMO CII grade), not the headline metric. Improvement is visible
+                  even when the A-E grade holds (e.g. E -> E). */}
+              <p className="text-[10px] uppercase tracking-wide text-[var(--muted)] pt-1">
+                Regülasyon · IMO CII
+              </p>
               <CiiBadge
                 baselineGrade={displayResult.baseline.cii_grade}
                 optimizedGrade={displayResult.optimized.cii_grade}
@@ -1138,6 +1183,16 @@ export default function Home() {
                   );
                 })()}
               </div>
+
+              <SpeedProfileChart
+                legs={legsForChart}
+                speeds={displayResult.optimized.speeds}
+              />
+              <FuelCompareChart
+                baselineFuel={displayResult.baseline.fuel_t}
+                optimizedFuel={displayResult.optimized.fuel_t}
+                savingPct={displayResult.saving_pct}
+              />
 
               {/* Rota Alternatifleri — compare candidates and pick one. */}
               {(altLoading || (alternatives && alternatives.length > 1)) && (
@@ -1240,16 +1295,6 @@ export default function Home() {
                   </div>
                 </div>
               )}
-
-              <SpeedProfileChart
-                legs={legsForChart}
-                speeds={displayResult.optimized.speeds}
-              />
-              <FuelCompareChart
-                baselineFuel={displayResult.baseline.fuel_t}
-                optimizedFuel={displayResult.optimized.fuel_t}
-                savingPct={displayResult.saving_pct}
-              />
             </>
           )}
         </div>
