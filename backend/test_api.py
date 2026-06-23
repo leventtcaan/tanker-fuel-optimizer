@@ -181,6 +181,57 @@ def test_infeasible_eta():
     print("Infeasible-ETA assertions passed.")
 
 
+def test_alternatives():
+    """Phase F4: /alternatives returns scored candidate routes with one pick."""
+    ist = client.get("/ports/search", params={"q": "istanbul"}).json()[0]
+    sing = client.get("/ports/search", params={"q": "singapore"}).json()[0]
+    payload = {
+        "origin": _latlon(ist),
+        "dest": _latlon(sing),
+        "num_legs": 6,
+        "dwt": 40000,
+        "service_speed": 14.0,
+        # Loose ETA so the long HRA-avoiding (Cape) lane is also feasible -> every
+        # candidate has slack to slow down and shows a positive saving.
+        "berth_eta_h": 1100.0,
+        "year": 2026,
+        "auto_weather": False,  # deterministic (no live API in the test)
+    }
+    resp = client.post("/alternatives", json=payload)
+    assert resp.status_code == 200, resp.text
+    cands = resp.json()
+
+    assert len(cands) >= 2, cands
+    # The İstanbul->Singapore shortest lane goes through the Gulf of Aden HRA.
+    shortest = next(c for c in cands if c["id"] == "shortest")
+    assert shortest["crosses_hra"] is True, shortest
+    # An HRA-avoiding alternative must be offered, and it must NOT cross the HRA.
+    hra = next((c for c in cands if c["id"] == "hra_avoiding"), None)
+    assert hra is not None, cands
+    assert hra["crosses_hra"] is False, hra
+    assert hra["distance_nm"] > shortest["distance_nm"], (hra, shortest)
+
+    for c in cands:
+        assert c["route_coords"], c["id"]
+        assert c["cii_grade"] in ("A", "B", "C", "D", "E"), c
+        assert c["saving_pct"] > 0, c  # feasible + slack -> real saving
+    # Exactly one recommendation, and it is the lowest-fuel feasible candidate.
+    recs = [c for c in cands if c["recommended"]]
+    assert len(recs) == 1, recs
+    feasible = [c for c in cands if c["feasible"]]
+    assert recs[0]["fuel_t"] == min(c["fuel_t"] for c in feasible), recs
+
+    print("\n=== Alternative routes (İstanbul -> Singapore) ===")
+    for c in cands:
+        star = " ★ÖNERİLEN" if c["recommended"] else ""
+        print(
+            f"  {c['id']:26s} {c['distance_nm']:7.0f}nm  {c['total_time_h']:6.0f}h  "
+            f"{c['fuel_t']:7.0f}t  CII {c['cii_grade']}  "
+            f"${c['cost_usd']:>10,.0f}  HRA={c['crosses_hra']}{star}"
+        )
+    print("Alternatives assertions passed.")
+
+
 def _weather_payload(auto_weather):
     izmir = client.get("/ports/search", params={"q": "izmir"}).json()[0]
     sing = client.get("/ports/search", params={"q": "singapore"}).json()[0]
@@ -252,6 +303,7 @@ if __name__ == "__main__":
     test_nearest_port()
     test_real_routing()
     test_infeasible_eta()
+    test_alternatives()
     test_auto_weather()
     test_weather_fallback()
     print("\nAll assertions passed.")

@@ -37,6 +37,9 @@ type Props = {
   legsWeather?: LegWeather[] | null;
   pickMode?: PickMode;
   onMapPick?: (lat: number, lon: number) => void;
+  // When an alternative route is selected, its distinct colour for the line
+  // (storm legs still draw red on top). Defaults to the standard teal.
+  routeColor?: string;
 };
 
 const ROUTE_TEAL = "#2dd4bf";
@@ -118,6 +121,7 @@ export default function RouteMap({
   legsWeather,
   pickMode = "off",
   onMapPick,
+  routeColor = ROUTE_TEAL,
 }: Props) {
   const [zones, setZones] = useState<ZoneFeature[]>([]);
 
@@ -231,7 +235,7 @@ export default function RouteMap({
                     key={i}
                     positions={chunk}
                     pathOptions={{
-                      color: storm ? ROUTE_STORM : ROUTE_TEAL,
+                      color: storm ? ROUTE_STORM : routeColor,
                       weight: 4,
                     }}
                   />
@@ -240,7 +244,7 @@ export default function RouteMap({
             ) : (
               <Polyline
                 positions={routeCoords}
-                pathOptions={{ color: ROUTE_TEAL, weight: 4 }}
+                pathOptions={{ color: routeColor, weight: 4 }}
               />
             )}
 

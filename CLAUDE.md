@@ -418,3 +418,38 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         midpoint, current-time, straight-line bearing; current=time not fuel).
       FRONTEND (small): per-leg sub-line "Akıntı X kn ↗ · SOG Y kn" (currentArrow
         = toward dir, no 180 offset). npm run build OK. bundle 199kB.
+- [x] Phase F4 — alternative routes with tradeoffs. DONE. backend test green, build OK.
+      PROBE (step 0, recorded in _reference/PLAN.md): searoute 1.6.0 SUPPORTS real
+        restrictions (passages: babalmandab/bosporus/gibraltar/suez/panama/ormuz/
+        northwest). İst->Sing default 5861nm via Suez crosses HRA; avoid suez/
+        babalmandab = 12574nm Cape, no HRA. -> use REAL restricted routing for
+        hra_avoiding; waypoint-nudge (concat origin->wp->dest) for weather/current.
+      BACKEND:
+      - routing.py: get_sea_route +restrictions param (passthrough to searoute).
+      - alt_routes.py NEW: crosses_hra (HRA polys from zones.geojson, ray-cast),
+        worst_leg_index (wave factor + head-current), hra_avoiding_route (restrict
+        suez+babalmandab+northwest), weather_current_route (nudge worst leg mid
+        ~1.5° perp, stitch 2 real legs; omit if <2% deviation or no worst leg).
+      - main.py: POST /alternatives (same inputs as /optimize, needs origin+dest).
+        _legs_and_weather helper (same auto-weather leg build as /optimize, kept
+        separate so /optimize untouched) + _score_candidate (baseline+optimize+
+        cii+blended cost). candidates: shortest (always) + hra_avoiding (only if
+        shortest crosses HRA) + weather_current (only auto_weather & worst leg).
+        recommended = lowest-fuel FEASIBLE. /optimize unchanged (backward compat).
+      - candidate dict has baseline+optimized fuel/cii(attained+ratio+grade)/cost,
+        saving_pct, money_vs_shortest, crosses_hra, eca_nm, feasible, route_coords,
+        legs_weather, speeds -> frontend can rebuild result cards from a candidate.
+      HONESTY: weather_current = waypoint-nudge APPROX (not weather-graph routing);
+        omitted in calm seas (no faked line). disclosed in code + AUDIT.md.
+      VERIFY (.venv): /alternatives İst->Sing (auto off, eta1100) = 2 cands:
+        shortest 5861nm crossesHRA ★, hra_avoiding 12574nm no-HRA; exactly 1 rec;
+        each saving>0; grades valid. live auto_weather = 2 cands when seas calm
+        (worst_leg None -> weather_current honestly omitted). direct test: synthetic
+        storm+head-current leg -> worst_leg_index works, nudge +111nm distinct.
+      FRONTEND: "Rota Alternatifleri" compare panel (cards: label, mesafe/süre/
+        yakıt/maliyet, CII colored, kısaya-göre fark, HRA/ECA/yaklaşık/ETA badges,
+        teal "Önerilen"). click candidate -> altToResult() feeds existing result
+        cards + draws THAT route in its color (ALT_COLORS teal/amber/purple) via
+        RouteMap routeColor prop. "En kısaya dön" resets. CII CARD FIX: shows
+        "Atılan CII X.X -> Y.Y" + "bir alt CII kademesine %N kaldı" (pctToNextGrade
+        from IMO bounds) so improvement visible even E->E. npm run build OK. 200kB.

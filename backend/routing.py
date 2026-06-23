@@ -32,7 +32,7 @@ def _haversine_nm(lat1, lon1, lat2, lon2):
     return EARTH_RADIUS_NM * c
 
 
-def get_sea_route(origin_latlon, dest_latlon):
+def get_sea_route(origin_latlon, dest_latlon, restrictions=None):
     """Compute the real sea route between two [lat, lon] points.
 
     Calls searoute (which wants [lon, lat]) and converts the resulting polyline
@@ -42,6 +42,10 @@ def get_sea_route(origin_latlon, dest_latlon):
     Args:
         origin_latlon: (lat, lon) of the origin port.
         dest_latlon: (lat, lon) of the destination port.
+        restrictions: optional list of searoute passage names to AVOID (e.g.
+            ["suez", "babalmandab"] forces the Cape-of-Good-Hope route). When
+            None, searoute's default (["northwest"]) is used. Used by the
+            alternative-routes feature to force a genuinely different lane.
 
     Returns:
         dict with:
@@ -51,7 +55,12 @@ def get_sea_route(origin_latlon, dest_latlon):
     origin_lonlat = [origin_latlon[1], origin_latlon[0]]
     dest_lonlat = [dest_latlon[1], dest_latlon[0]]
 
-    route = sr.searoute(origin_lonlat, dest_lonlat, units="naut")
+    if restrictions is None:
+        route = sr.searoute(origin_lonlat, dest_lonlat, units="naut")
+    else:
+        route = sr.searoute(
+            origin_lonlat, dest_lonlat, units="naut", restrictions=restrictions
+        )
 
     # searoute returns [lon, lat]; swap to [lat, lon] for Leaflet.
     coords_latlon = [[lat, lon] for lon, lat in route["geometry"]["coordinates"]]

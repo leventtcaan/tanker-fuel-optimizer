@@ -42,6 +42,37 @@ type OptimizeResponse = {
   legs_weather: LegWeather[] | null;
 };
 
+// One scored candidate route from POST /alternatives.
+type AltRoute = {
+  id: string;
+  label: string;
+  recommended: boolean;
+  approx: boolean;
+  feasible: boolean;
+  route_coords: number[][];
+  legs_weather: LegWeather[] | null;
+  distance_nm: number;
+  total_time_h: number;
+  fuel_t: number;
+  baseline_fuel_t: number;
+  saving_pct: number;
+  co2_saved_t: number;
+  cii_grade: string;
+  cii_attained: number;
+  cii_ratio: number;
+  baseline_cii_grade: string;
+  baseline_cii_attained: number;
+  baseline_cii_ratio: number;
+  cost_usd: number;
+  baseline_cost_usd: number;
+  money_saved_usd: number;
+  money_vs_shortest: number;
+  speeds: number[] | null;
+  eca_nm: number;
+  crosses_hra: boolean;
+  min_time_h: number;
+};
+
 type LegWeather = {
   factor: number;
   wave_m: number | null;
@@ -97,6 +128,32 @@ const windArrow = (fromDeg: number) =>
 // Ocean current direction is already the direction it flows TOWARD, so no offset.
 const currentArrow = (towardDeg: number) =>
   WIND_ARROWS[Math.round((towardDeg % 360) / 45) % 8];
+
+// Distinct route colour per alternative candidate (also used for its compare row).
+const ALT_COLORS: Record<string, string> = {
+  shortest: "#2dd4bf", // teal
+  hra_avoiding: "#f59e0b", // amber
+  weather_current_optimized: "#a78bfa", // purple
+};
+const altColor = (id: string) => ALT_COLORS[id] ?? "#2dd4bf";
+
+// IMO tanker CII grade boundaries (attained/required ratio). Used to show how far
+// the optimized intensity is from dropping a grade.
+const CII_BOUNDS = [0.86, 0.94, 1.06, 1.18]; // A | B | C | D | E
+const GRADE_COLORS: Record<string, string> = {
+  A: "var(--grade-a)",
+  B: "var(--grade-b)",
+  C: "var(--grade-c)",
+  D: "var(--grade-d)",
+  E: "var(--grade-e)",
+};
+// Percent the attained CII must still drop to reach the next-better grade.
+// null when already grade A (nothing better).
+function pctToNextGrade(ratio: number): number | null {
+  const lower = CII_BOUNDS.filter((b) => b <= ratio).pop();
+  if (lower === undefined) return null;
+  return ((ratio - lower) / ratio) * 100;
+}
 
 // Collapsible input group with a clickable header.
 function Section({
@@ -156,6 +213,12 @@ export default function Home() {
   const [result, setResult] = useState<OptimizeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Alternative routes (POST /alternatives) + which one is currently shown. null
+  // selection = show the primary /optimize result (the shortest lane).
+  const [alternatives, setAlternatives] = useState<AltRoute[] | null>(null);
+  const [altLoading, setAltLoading] = useState(false);
+  const [selectedAltId, setSelectedAltId] = useState<string | null>(null);
 
   // Click-to-pick mode: clicking the map snaps the chosen endpoint to the
   // nearest named port. "off" disables map clicks (default).
@@ -264,6 +327,46 @@ export default function Home() {
     setWeather((prev) => prev.map((w, i) => (i === index ? value : w)));
   }
 
+  // Shared request body for /optimize and /alternatives.
+  function buildPayload(eta: number) {
+    return {
+      origin: originRef,
+      dest: destRef,
+      num_legs: NUM_LEGS,
+      weather,
+      dwt,
+      service_speed: serviceSpeed,
+      berth_eta_h: eta,
+      year,
+      fuel_type: fuelType,
+      fuel_prices: fuelPrices,
+      ets_price: etsPrice,
+      eu_scope_fraction: euScopeFraction,
+      auto_weather: autoWeather,
+      draft_dm: draftDm,
+      days_since_drydock: daysSinceDrydock,
+      load,
+    };
+  }
+
+  // Fetch + score the candidate routes (runs after the main result is shown).
+  async function fetchAlternatives(eta: number) {
+    setAltLoading(true);
+    try {
+      const res = await fetch(`${API}/alternatives`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload(eta)),
+      });
+      if (!res.ok) throw new Error();
+      setAlternatives((await res.json()) as AltRoute[]);
+    } catch {
+      setAlternatives(null);
+    } finally {
+      setAltLoading(false);
+    }
+  }
+
   async function handleOptimize(etaOverride?: number) {
     if (!originRef || !destRef) {
       setError("Lütfen kalkış ve varış limanı seçin");
@@ -273,35 +376,22 @@ export default function Home() {
     if (etaOverride !== undefined) setBerthEta(etaOverride);
     setLoading(true);
     setError(null);
+    // A fresh optimize invalidates the previous candidate comparison/selection.
+    setAlternatives(null);
+    setSelectedAltId(null);
     try {
-      const payload = {
-        origin: originRef,
-        dest: destRef,
-        num_legs: NUM_LEGS,
-        weather,
-        dwt,
-        service_speed: serviceSpeed,
-        berth_eta_h: eta,
-        year,
-        fuel_type: fuelType,
-        fuel_prices: fuelPrices,
-        ets_price: etsPrice,
-        eu_scope_fraction: euScopeFraction,
-        auto_weather: autoWeather,
-        draft_dm: draftDm,
-        days_since_drydock: daysSinceDrydock,
-        load,
-      };
       const res = await fetch(`${API}/optimize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildPayload(eta)),
       });
       if (!res.ok) {
         throw new Error(`Sunucu hatası: ${res.status}`);
       }
       const data: OptimizeResponse = await res.json();
       setResult(data);
+      // Then populate the comparison panel (cheap: reuses the weather cache).
+      if (data.feasible) fetchAlternatives(eta);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu");
     } finally {
@@ -309,7 +399,66 @@ export default function Home() {
     }
   }
 
-  const routeCoords = (result?.route_coords ?? []) as [number, number][];
+  // Turn a selected candidate into the OptimizeResponse shape the result cards
+  // expect, so clicking a candidate loads its metrics into the existing cards.
+  function altToResult(c: AltRoute): OptimizeResponse {
+    const scen = (
+      fuel: number,
+      att: number,
+      ratio: number,
+      grade: string,
+      cost: number,
+      speeds: number[] | null
+    ): ScenarioOut => ({
+      fuel_t: fuel,
+      total_time_h: c.total_time_h,
+      attained_cii: att,
+      cii_ratio: ratio,
+      cii_grade: grade,
+      speeds,
+      fuel_cost_usd: cost,
+      ets_cost_eur: 0,
+      eca_nm: c.eca_nm,
+      non_eca_nm: 0,
+      blended_fuel_cost_usd: cost,
+    });
+    return {
+      baseline: scen(
+        c.baseline_fuel_t,
+        c.baseline_cii_attained,
+        c.baseline_cii_ratio,
+        c.baseline_cii_grade,
+        c.baseline_cost_usd,
+        null
+      ),
+      optimized: scen(
+        c.fuel_t,
+        c.cii_attained,
+        c.cii_ratio,
+        c.cii_grade,
+        c.cost_usd,
+        c.speeds
+      ),
+      saving_pct: c.saving_pct,
+      co2_saved_t: c.co2_saved_t,
+      money_saved_usd: c.money_saved_usd,
+      distance_nm: c.distance_nm,
+      route_coords: c.route_coords,
+      eca_zones: result?.eca_zones ?? null,
+      feasible: c.feasible,
+      min_time_h: c.min_time_h,
+      legs_weather: c.legs_weather,
+    };
+  }
+
+  // The selected candidate (if any) overrides the primary result for display.
+  const selectedAlt =
+    selectedAltId && alternatives
+      ? alternatives.find((c) => c.id === selectedAltId) ?? null
+      : null;
+  const displayResult = selectedAlt ? altToResult(selectedAlt) : result;
+
+  const routeCoords = (displayResult?.route_coords ?? []) as [number, number][];
 
   // Pick the meaningful fuel cost: blended when the route touches an ECA.
   const scenarioCost = (s: ScenarioOut) =>
@@ -628,9 +777,10 @@ export default function Home() {
               routeCoords={routeCoords}
               originName={originPort ? titleCase(originPort.name) : undefined}
               destName={destPort ? titleCase(destPort.name) : undefined}
-              legsWeather={result?.legs_weather ?? null}
+              legsWeather={displayResult?.legs_weather ?? null}
               pickMode={pickMode}
               onMapPick={handleMapPick}
+              routeColor={selectedAlt ? altColor(selectedAlt.id) : undefined}
             />
           </div>
         </div>
@@ -697,28 +847,49 @@ export default function Home() {
             </div>
           )}
 
-          {result && result.feasible && (
+          {result && result.feasible && displayResult && (
             <>
+              {/* When a candidate is selected, say so + offer a way back. */}
+              {selectedAlt && (
+                <div className="pruva-card p-3 text-xs flex items-center justify-between">
+                  <span>
+                    Görüntülenen rota:{" "}
+                    <span
+                      className="font-semibold"
+                      style={{ color: altColor(selectedAlt.id) }}
+                    >
+                      {selectedAlt.label}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => setSelectedAltId(null)}
+                    className="text-[var(--accent)] font-medium hover:underline"
+                  >
+                    En kısaya dön
+                  </button>
+                </div>
+              )}
+
               {/* Headline: money saved. Never render a negative value as a big
                   teal hero — if there's no slack to slow down, show it muted. */}
               <div className="pruva-card p-5">
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   Para Tasarrufu
                 </p>
-                {result.money_saved_usd > 0 ? (
+                {displayResult.money_saved_usd > 0 ? (
                   <>
                     <p className="text-4xl font-extrabold text-[var(--accent)] mt-1">
-                      ${fmt(result.money_saved_usd)}
+                      ${fmt(displayResult.money_saved_usd)}
                     </p>
                     <p className="text-sm text-[var(--muted)] mt-1">
-                      Yakıt tasarrufu %{result.saving_pct.toFixed(1)} · CO₂{" "}
-                      {fmt(result.co2_saved_t)} t
+                      Yakıt tasarrufu %{displayResult.saving_pct.toFixed(1)} · CO₂{" "}
+                      {fmt(displayResult.co2_saved_t)} t
                     </p>
                   </>
                 ) : (
                   <>
                     <p className="text-2xl font-semibold text-[var(--muted)] mt-1">
-                      ${fmt(result.money_saved_usd)}
+                      ${fmt(displayResult.money_saved_usd)}
                     </p>
                     <p className="text-sm text-[var(--muted)] mt-1">
                       Bu ETA&apos;da yavaşlama payı yok — ETA&apos;yı artırın.
@@ -732,47 +903,175 @@ export default function Home() {
                 <h2 className="font-semibold mb-2">Yakıt &amp; CII</h2>
                 <div className="flex justify-between">
                   <span className="text-[var(--muted)]">Toplam mesafe</span>
-                  <span>{fmt(result.distance_nm)} nm</span>
+                  <span>{fmt(displayResult.distance_nm)} nm</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--muted)]">Baz / Optimize yakıt</span>
                   <span>
-                    {fmt(result.baseline.fuel_t)} → {fmt(result.optimized.fuel_t)} t
+                    {fmt(displayResult.baseline.fuel_t)} →{" "}
+                    {fmt(displayResult.optimized.fuel_t)} t
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--muted)]">Baz / Optimize maliyet</span>
                   <span>
-                    ${fmt(scenarioCost(result.baseline))} → $
-                    {fmt(scenarioCost(result.optimized))}
+                    ${fmt(scenarioCost(displayResult.baseline))} → $
+                    {fmt(scenarioCost(displayResult.optimized))}
                   </span>
                 </div>
+                {/* Attained CII number — improvement is visible even when the
+                    A-E grade does not change (e.g. E -> E). */}
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted)]">Atılan CII (g/dwt·nm)</span>
+                  <span>
+                    {displayResult.baseline.attained_cii.toFixed(1)} →{" "}
+                    {displayResult.optimized.attained_cii.toFixed(1)}
+                  </span>
+                </div>
+                {(() => {
+                  const pct = pctToNextGrade(displayResult.optimized.cii_ratio);
+                  return pct != null ? (
+                    <p className="text-xs text-[var(--muted)] pt-0.5">
+                      Bir alt CII kademesine %{pct.toFixed(0)} kaldı
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[var(--grade-a)] pt-0.5">
+                      En iyi CII kademesinde (A)
+                    </p>
+                  );
+                })()}
                 {euScopeFraction > 0 && (
                   <div className="flex justify-between">
                     <span className="text-[var(--muted)]">ETS (baz / optimize)</span>
                     <span>
-                      €{fmt(result.baseline.ets_cost_eur)} → €
-                      {fmt(result.optimized.ets_cost_eur)}
+                      €{fmt(displayResult.baseline.ets_cost_eur)} → €
+                      {fmt(displayResult.optimized.ets_cost_eur)}
                     </span>
                   </div>
                 )}
-                {result.baseline.eca_nm > 0 && (
+                {displayResult.baseline.eca_nm > 0 && (
                   <p className="text-[var(--grade-a)] pt-1">
-                    Rotanın {fmt(result.baseline.eca_nm)} nm&apos;si ECA içinde
+                    Rotanın {fmt(displayResult.baseline.eca_nm)} nm&apos;si ECA içinde
                     (düşük kükürt zorunlu, pahalı yakıt)
                   </p>
                 )}
               </div>
 
               <CiiBadge
-                baselineGrade={result.baseline.cii_grade}
-                optimizedGrade={result.optimized.cii_grade}
+                baselineGrade={displayResult.baseline.cii_grade}
+                optimizedGrade={displayResult.optimized.cii_grade}
               />
-              <SpeedProfileChart legs={legsForChart} speeds={result.optimized.speeds} />
+
+              {/* Rota Alternatifleri — compare candidates and pick one. */}
+              {(altLoading || (alternatives && alternatives.length > 1)) && (
+                <div className="pruva-card p-4 text-sm">
+                  <h2 className="font-semibold mb-2">Rota Alternatifleri</h2>
+                  {altLoading && !alternatives && (
+                    <p className="text-xs text-[var(--muted)]">
+                      Alternatifler hesaplanıyor…
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    {alternatives?.map((c) => {
+                      const active =
+                        selectedAltId === c.id ||
+                        (selectedAltId === null && c.id === "shortest");
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() =>
+                            setSelectedAltId(c.id === "shortest" ? null : c.id)
+                          }
+                          className="w-full text-left rounded-lg border p-2.5 transition-colors"
+                          style={{
+                            borderColor: active
+                              ? altColor(c.id)
+                              : "var(--border)",
+                            backgroundColor: active
+                              ? "rgba(45,212,191,0.06)"
+                              : "transparent",
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium flex items-center gap-1.5">
+                              <span
+                                className="inline-block w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: altColor(c.id) }}
+                              />
+                              {c.label}
+                            </span>
+                            {c.recommended && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)] text-[#04201c]">
+                                Önerilen
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-[var(--muted)]">
+                            <span>Mesafe: {fmt(c.distance_nm)} nm</span>
+                            <span>Süre: {fmt(c.total_time_h)} sa</span>
+                            <span>Yakıt: {fmt(c.fuel_t)} t</span>
+                            <span>
+                              Maliyet: ${fmt(c.cost_usd)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              CII:{" "}
+                              <span
+                                className="font-semibold px-1 rounded"
+                                style={{ color: GRADE_COLORS[c.cii_grade] }}
+                              >
+                                {c.cii_grade}
+                              </span>
+                            </span>
+                            <span>
+                              Kısaya göre:{" "}
+                              {c.money_vs_shortest === 0
+                                ? "—"
+                                : `${c.money_vs_shortest > 0 ? "+" : ""}$${fmt(
+                                    c.money_vs_shortest
+                                  )}`}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex gap-1.5 flex-wrap">
+                            {c.crosses_hra ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--grade-e)] text-[var(--grade-e)]">
+                                HRA riski
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--grade-a)] text-[var(--grade-a)]">
+                                HRA yok
+                              </span>
+                            )}
+                            {c.eca_nm > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                                ECA {fmt(c.eca_nm)} nm
+                              </span>
+                            )}
+                            {!c.feasible && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--grade-e)] text-[var(--grade-e)]">
+                                ETA yetişmez
+                              </span>
+                            )}
+                            {c.approx && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                                yaklaşık
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <SpeedProfileChart
+                legs={legsForChart}
+                speeds={displayResult.optimized.speeds}
+              />
               <FuelCompareChart
-                baselineFuel={result.baseline.fuel_t}
-                optimizedFuel={result.optimized.fuel_t}
-                savingPct={result.saving_pct}
+                baselineFuel={displayResult.baseline.fuel_t}
+                optimizedFuel={displayResult.optimized.fuel_t}
+                savingPct={displayResult.saving_pct}
               />
             </>
           )}

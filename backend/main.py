@@ -32,6 +32,12 @@ from economics import (
     ETS_EUR_PER_TCO2,
 )
 from zones import eca_split, ECA_ZONES
+from alt_routes import (
+    crosses_hra,
+    hra_avoiding_route,
+    weather_current_route,
+    worst_leg_index,
+)
 from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut
 
 app = FastAPI(title="Tanker Fuel Optimizer API")
@@ -303,3 +309,179 @@ async def optimize(req: OptimizeRequest):
         min_time_h=opt["min_time_h"],
         legs_weather=legs_weather,
     )
+
+
+async def _legs_and_weather(route_coords, req):
+    """Resample a route into legs, with live weather+current when auto_weather.
+
+    Mirrors the auto-weather leg-building used by /optimize (kept separate so the
+    /optimize handler stays untouched). Returns (legs, legs_weather) where each
+    leg carries the per-leg Beaufort, wind angle and along-track current; the
+    returned legs_weather dicts are enriched with bearing/theta/current_along for
+    the client and for the worst-leg pick.
+    """
+    if req.auto_weather:
+        mids = leg_midpoints(route_coords, req.num_legs)
+        bearings = leg_bearings(route_coords, req.num_legs)
+        legs_weather = await fetch_leg_weather(mids)
+        weather, beaufort, wind_angle, current = [], [], [], []
+        for lw, brng in zip(legs_weather, bearings):
+            weather.append(lw["factor"])
+            beaufort.append(lw.get("beaufort") or 0.0)
+            wind_dir = lw.get("wind_dir")
+            if wind_dir is not None:
+                theta_deg = relative_wind_deg(wind_dir, brng)
+                wind_angle.append(wind_angle_rad_from(wind_dir, brng))
+            else:
+                theta_deg = None
+                wind_angle.append(0.0)
+            cur_kn = lw.get("current_kn") or 0.0
+            cur_dir = lw.get("current_dir")
+            along = current_along_kn(cur_kn, cur_dir, brng) if cur_dir is not None else 0.0
+            current.append(along)
+            lw["current_along_kn"] = round(along, 3)
+            lw["bearing_deg"] = round(brng, 1)
+            lw["theta_deg"] = round(theta_deg, 1) if theta_deg is not None else None
+        legs = resample_to_legs(
+            route_coords, req.num_legs, weather, beaufort, wind_angle, current
+        )
+        return legs, legs_weather
+    legs = resample_to_legs(route_coords, req.num_legs, req.weather)
+    return legs, None
+
+
+async def _score_candidate(cid, label, route_coords, req, approx=False):
+    """Score one candidate route end-to-end with the existing engine.
+
+    Runs the same baseline + optimized pipeline as /optimize (fuel, time, CII,
+    ECA-blended cost) on this candidate's geometry and returns a flat summary
+    dict (including the baseline figures so the UI can show "X -> Y").
+    """
+    legs, legs_weather = await _legs_and_weather(route_coords, req)
+    distance = sum(leg.distance_nm for leg in legs)
+
+    base = baseline_voyage(
+        legs, req.service_speed, req.draft_dm, req.load, req.days_since_drydock
+    )
+    opt = optimize_speed_profile(
+        legs,
+        req.berth_eta_h,
+        req.vmin,
+        req.vmax,
+        req.draft_dm,
+        req.load,
+        req.days_since_drydock,
+    )
+    if legs_weather is not None:
+        for lw, leg, stw in zip(legs_weather, legs, opt["speeds"]):
+            lw["sog_kn"] = round(leg_sog(stw, leg), 2)
+
+    base_cii = rate_voyage(base["total_fuel"], req.dwt, distance, req.year)
+    opt_cii = rate_voyage(opt["total_fuel"], req.dwt, distance, req.year)
+
+    eca_nm, non_eca_nm = eca_split(route_coords)
+    prices = req.fuel_prices or PRICES_USD_PER_T
+    base_cost = blended_fuel_cost_usd(base["total_fuel"], eca_nm, non_eca_nm, prices=prices)
+    opt_cost = blended_fuel_cost_usd(opt["total_fuel"], eca_nm, non_eca_nm, prices=prices)
+
+    saving_pct = (base["total_fuel"] - opt["total_fuel"]) / base["total_fuel"] * 100
+    co2_saved_t = (base["total_fuel"] - opt["total_fuel"]) * CF
+
+    return {
+        "id": cid,
+        "label": label,
+        "recommended": False,
+        "approx": approx,
+        "feasible": opt["feasible"],
+        "route_coords": route_coords,
+        "legs_weather": legs_weather,
+        "distance_nm": distance,
+        "total_time_h": opt["total_time_h"],
+        "fuel_t": opt["total_fuel"],
+        "baseline_fuel_t": base["total_fuel"],
+        "saving_pct": saving_pct,
+        "co2_saved_t": co2_saved_t,
+        "cii_grade": opt_cii["grade"],
+        "cii_attained": opt_cii["attained"],
+        "cii_ratio": opt_cii["ratio"],
+        "baseline_cii_grade": base_cii["grade"],
+        "baseline_cii_attained": base_cii["attained"],
+        "baseline_cii_ratio": base_cii["ratio"],
+        "cost_usd": opt_cost,
+        "baseline_cost_usd": base_cost,
+        "money_saved_usd": base_cost - opt_cost,
+        "money_vs_shortest": 0.0,  # filled in once the shortest cost is known
+        "speeds": opt["speeds"],
+        "eca_nm": eca_nm,
+        "crosses_hra": crosses_hra(route_coords),
+        "min_time_h": opt["min_time_h"],
+    }
+
+
+@app.post("/alternatives")
+async def alternatives(req: OptimizeRequest):
+    """Generate and score 2-4 candidate routes for side-by-side comparison.
+
+    Same inputs as /optimize, but requires origin+dest. Returns a list of scored
+    candidates (shortest, optionally an HRA-avoiding lane, and optionally a
+    weather/current waypoint-nudge), with the lowest-fuel feasible one flagged
+    `recommended`. The single-route /optimize flow is unchanged.
+    """
+    if not (req.origin and req.dest):
+        raise HTTPException(
+            status_code=400, detail="Provide origin+dest port names or coords."
+        )
+    origin_ll = resolve_latlon(req.origin)
+    dest_ll = resolve_latlon(req.dest)
+    if origin_ll is None:
+        raise HTTPException(status_code=400, detail=f"Unknown origin: {req.origin}")
+    if dest_ll is None:
+        raise HTTPException(status_code=400, detail=f"Unknown dest: {req.dest}")
+
+    # 1) Shortest (default) lane — always present, and the cost reference.
+    shortest_route = get_sea_route(origin_ll, dest_ll)
+    shortest = await _score_candidate(
+        "shortest", "En Kısa Rota", shortest_route["coords_latlon"], req
+    )
+    candidates = [shortest]
+
+    # 2) HRA-avoiding lane — only when the shortest route crosses the HRA.
+    if shortest["crosses_hra"]:
+        hra = hra_avoiding_route(origin_ll, dest_ll)
+        if hra is not None and not crosses_hra(hra["coords_latlon"]):
+            candidates.append(
+                await _score_candidate(
+                    "hra_avoiding",
+                    "Korsanlıktan Kaçınan",
+                    hra["coords_latlon"],
+                    req,
+                )
+            )
+
+    # 3) Weather/current waypoint-nudge — only with live data and a worst leg.
+    if req.auto_weather and shortest["legs_weather"]:
+        widx = worst_leg_index(shortest["legs_weather"])
+        wc = weather_current_route(
+            origin_ll, dest_ll, shortest_route["coords_latlon"], widx, req.num_legs
+        )
+        if wc is not None:
+            candidates.append(
+                await _score_candidate(
+                    "weather_current_optimized",
+                    "Hava/Akıntı Optimize",
+                    wc["coords_latlon"],
+                    req,
+                    approx=True,
+                )
+            )
+
+    # Money difference vs the shortest lane.
+    ref_cost = shortest["cost_usd"]
+    for c in candidates:
+        c["money_vs_shortest"] = c["cost_usd"] - ref_cost
+
+    # Recommend the lowest-fuel FEASIBLE candidate (fall back to all if none).
+    pool = [c for c in candidates if c["feasible"]] or candidates
+    min(pool, key=lambda c: c["fuel_t"])["recommended"] = True
+
+    return candidates

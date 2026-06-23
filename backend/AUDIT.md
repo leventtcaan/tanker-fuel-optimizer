@@ -93,6 +93,29 @@ fuel/time tradeoff ("against vs with the current").
   straight-line bearing (no along-track or forecast-time variation). Current
   affects time/SOG only — it is not separately added to the fuel formula.
 
+## UPDATE — Phase F4: alternative routes with tradeoffs (2026-06-23)
+
+`POST /alternatives` returns 2-4 candidate routes, each scored with the existing
+engine (fuel/time/CII/ECA cost) + an HRA risk flag, with the lowest-fuel feasible
+one flagged `recommended`. `/optimize` (single route) is unchanged.
+
+- CAPABILITY PROBE (recorded in _reference/PLAN.md): searoute 1.6.0 **does**
+  support real route `restrictions` (passages: babalmandab, bosporus, gibraltar,
+  suez, panama, ormuz, northwest). İstanbul→Singapore default = 5861 nm via Suez
+  (crosses HRA); restricting suez/babalmandab = 12574 nm via Cape (no HRA).
+- Candidates: `shortest` (default lane); `hra_avoiding` (REAL passage-restricted
+  lane, only when the shortest route crosses the HRA polygon from zones.geojson);
+  `weather_current_optimized` (only with live data + a worst wave/head-current
+  leg).
+- APPROXIMATION (disclosed): `weather_current_optimized` is a WAYPOINT-NUDGE — it
+  offsets the worst leg's midpoint ~1.5° perpendicular to its heading and stitches
+  two real searoute legs (origin→wp→dest). It is NOT true weather-graph routing,
+  and is only offered when it deviates >2% from the shortest lane and a worst leg
+  actually stands out; in calm seas it is honestly omitted (no faked line).
+- Scoring reuses `_legs_and_weather` (same auto-weather leg-building as /optimize)
+  + `baseline_voyage`/`optimize_speed_profile`/`rate_voyage`/`blended_fuel_cost_usd`;
+  CII/economics/optimizer untouched.
+
 ---
 
 ## SOLID (verified correct)
