@@ -183,12 +183,15 @@ export default function RouteMap({
                 <Polygon
                   key={z.properties.name}
                   positions={ring(z)}
-                  smoothFactor={3}
+                  smoothFactor={6}
                   pathOptions={{
-                    color: "#0d9488",
-                    weight: 1.2,
+                    // Soft painted wash: fill-dominant, near-borderless.
+                    className: "pruva-zone",
+                    color: ROUTE_TEAL,
+                    weight: 1,
+                    opacity: 0.25,
                     fillColor: ROUTE_TEAL,
-                    fillOpacity: 0.1,
+                    fillOpacity: 0.2,
                     lineJoin: "round",
                   }}
                 >
@@ -204,13 +207,16 @@ export default function RouteMap({
                 <Polygon
                   key={z.properties.name}
                   positions={ring(z)}
-                  smoothFactor={3}
+                  smoothFactor={6}
                   pathOptions={{
+                    // Soft red wash with a faint dashed hint that it's a risk area.
+                    className: "pruva-zone",
                     color: ROUTE_STORM,
-                    weight: 1.3,
+                    weight: 1,
+                    opacity: 0.3,
                     fillColor: ROUTE_STORM,
-                    fillOpacity: 0.1,
-                    dashArray: "5 6",
+                    fillOpacity: 0.15,
+                    dashArray: "2 7",
                     lineCap: "round",
                     lineJoin: "round",
                   }}

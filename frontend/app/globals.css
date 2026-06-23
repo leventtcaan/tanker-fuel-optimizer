@@ -56,6 +56,13 @@ body {
   }
 }
 
+/* Zone polygons painted as soft regions: a gentle blur feathers the edges so
+   they read as a tinted wash rather than an outlined shape. Scoped to the zone
+   paths only (the route polyline keeps crisp edges). */
+.pruva-zone {
+  filter: blur(1.3px);
+}
+
 /* Leaflet popups/tooltips/attribution tuned for the LIGHT professional basemap:
    clean white surfaces with dark navy text, subtle border + shadow. */
 .leaflet-popup-content-wrapper,

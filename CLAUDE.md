@@ -539,3 +539,13 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         subtle; rounded bar tops kept. calm bar blue->teal (--accent), caption
         "mavi"->"turkuaz". storm red + optimized green + baseline gray kept.
       - npm run build OK. bundle 202kB.
+- [x] Zones -> soft painted regions (display only, zones only). build OK.
+      RouteMap.tsx + globals.css. less outline, more fill (reference-tool look).
+      - ECA: fillOpacity 0.10->0.20, stroke weight 1.2->1 + opacity 0.25 (near
+        borderless teal wash). HRA: fill 0.10->0.15, weight 1 + opacity 0.30,
+        dashArray "5 6"->"2 7" (faint risk hint, not bold dashed border).
+      - smoothFactor 3->6 (rounder shapes). className "pruva-zone" in pathOptions
+        -> globals.css .pruva-zone { filter: blur(1.3px) } feathers edges (zones
+        only; route paths keep crisp edges, stay ON TOP — declared after zones).
+      - tooltips on hover + layer toggles (ECA/HRA/OpenSeaMap) unchanged. basemap
+        + panels untouched. npm run build OK. bundle 202kB.
