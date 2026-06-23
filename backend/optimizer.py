@@ -22,28 +22,45 @@ The optimizer below combines both: it minimizes total fuel subject to a single
 import numpy as np
 from scipy.optimize import minimize
 
+from fuel_model import FC0_DEFAULT
 from voyage import leg_fuel, leg_time
 
 
-def baseline_voyage(legs, service_speed_kn, c=0.0145):
+def baseline_voyage(
+    legs, service_speed_kn, draft_m=12.0, load=0.5, days_since_dd=180.0, fc0=FC0_DEFAULT
+):
     """Sail every leg at one constant service speed (the naive plan).
 
     Args:
         legs: list of Leg objects.
         service_speed_kn: the single speed used for all legs, in knots.
-        c: vessel-specific coefficient (tons/day per knot^3).
+        draft_m: mean draft Dm, in metres (vessel input).
+        load: load/ballast state, 0 (ballast) to 1 (fully laden).
+        days_since_dd: days since last drydock (hull-fouling proxy).
+        fc0: calm-water daily fuel at the reference speed for the vessel.
 
     Returns:
         dict with:
             total_fuel:   total fuel for the voyage, in metric tons.
             total_time_h: total sailing time, in hours.
     """
-    total_fuel = sum(leg_fuel(service_speed_kn, leg, c) for leg in legs)
+    total_fuel = sum(
+        leg_fuel(service_speed_kn, leg, draft_m, load, days_since_dd, fc0) for leg in legs
+    )
     total_time_h = sum(leg_time(service_speed_kn, leg) for leg in legs)
     return {"total_fuel": total_fuel, "total_time_h": total_time_h}
 
 
-def optimize_speed_profile(legs, berth_eta_h, vmin=10.0, vmax=16.0, c=0.0145):
+def optimize_speed_profile(
+    legs,
+    berth_eta_h,
+    vmin=10.0,
+    vmax=16.0,
+    draft_m=12.0,
+    load=0.5,
+    days_since_dd=180.0,
+    fc0=FC0_DEFAULT,
+):
     """Find the per-leg speeds that minimize fuel and still arrive by deadline.
 
     Minimizes total fuel over all legs using SLSQP, with each leg's speed bounded
@@ -59,7 +76,10 @@ def optimize_speed_profile(legs, berth_eta_h, vmin=10.0, vmax=16.0, c=0.0145):
         berth_eta_h: time budget — the ship must arrive within this many hours.
         vmin: minimum allowed speed per leg, in knots.
         vmax: maximum allowed speed per leg, in knots.
-        c: vessel-specific coefficient (tons/day per knot^3).
+        draft_m: mean draft Dm, in metres (vessel input).
+        load: load/ballast state, 0 (ballast) to 1 (fully laden).
+        days_since_dd: days since last drydock (hull-fouling proxy).
+        fc0: calm-water daily fuel at the reference speed for the vessel.
 
     Returns:
         dict with:
@@ -73,7 +93,10 @@ def optimize_speed_profile(legs, berth_eta_h, vmin=10.0, vmax=16.0, c=0.0145):
     total_distance = sum(leg.distance_nm for leg in legs)
 
     def total_fuel(speeds):
-        return sum(leg_fuel(s, leg, c) for s, leg in zip(speeds, legs))
+        return sum(
+            leg_fuel(s, leg, draft_m, load, days_since_dd, fc0)
+            for s, leg in zip(speeds, legs)
+        )
 
     # Fastest possible voyage: every leg at vmax. If even this overshoots the
     # deadline, no speed profile can arrive on time -> the request is infeasible.

@@ -345,3 +345,30 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - BALANCE: tighter spacing — Section py-3->2.5 mt/space-y-3->2.5, grid
         gap/p-4->3, right col space-y-4->3, button mt-4->3. fits ~900px laptop.
       - still 3-col desktop / stacked mobile. npm run build OK. bundle 198kB.
+- [x] Phase F1 — swap cubic fuel model for log-linear (Admiralty-extended). DONE.
+      backend test green, build OK. plan = _reference/PLAN.md (F1 only here).
+      teammates present this formula -> app must flow by it. reimplemented in OUR
+      style, NOT imported from _reference/their_project.
+      FORMULA (fuel_model.daily_fuel_loglinear):
+        FC = FC0*(V/Vref)^b1 * exp(b2*B + b3*Hs + b4*cosθ + b5*(Dm-10) + bL*load
+             + b7*(d_DD-180)). literature/slide coeffs (formula.png): Vref12 b1
+             2.85 b2 .082 b3 .055 b4 -.048 b5 .031 bL .17 b7 .00021.
+        FC0=26 -> calm 12kn = 27 t/day (25-30 band). voyage fuel ~V^1.85 (was V^2),
+        still monotonic up in V -> SLSQP + feasibility guard unchanged.
+      F1 SCOPE: B=0, θ=0 (live wind/angle = later phase). Hs DERIVED from existing
+        per-leg weather factor via voyage.weather_factor_to_wave_m (inverse of
+        weather.py band: 1.0->0m, 1.6->5m) so weather redistribution survives.
+        new OPTIONAL inputs: draft_dm=12, days_since_drydock=180, load=0.5.
+      KEEP CII/economics/optimizer structure (consume fuel TONS, insulated). old
+        cubic daily_fuel/voyage_fuel kept but marked DEPRECATED (test_fuel still
+        uses them).
+      FILES: fuel_model.py (+loglinear, deprecate cubic), voyage.py (leg_fuel ->
+        loglinear + wave helper), optimizer.py (thread draft/load/d_dd/fc0, drop
+        c), schemas.py (+draft_dm/days_since_drydock/load), main.py (thread them),
+        AUDIT.md (F1 update note + re-baseline), test_api.py (re-baselined asserts).
+      RE-BASELINE (numbers shift w/ model, expected): legacy 3-leg storm E->C
+        (cubic) -> now E->D 25.0% $43516. İzmir->Sing E->C -> now E->D 19.0%
+        $86393. baseline still E. all test_*.py green (.venv/bin/python).
+      FRONTEND (small, F1 surfacing only — reskin is F5): Sefer section +Draft Dm,
+        +Drydock'tan gün, +Yük oranı slider (0-1). sent in /optimize payload.
+        npm run build OK. bundle 199kB.

@@ -58,6 +58,10 @@ const DEFAULT_DEST_MATCH = "SINGAPORE";
 const DEFAULT_ETA = 130;
 const DEFAULT_DWT = 40000;
 const DEFAULT_SERVICE_SPEED = 14.0;
+// Vessel inputs for the log-linear fuel model (F1).
+const DEFAULT_DRAFT_DM = 12.0;
+const DEFAULT_DAYS_SINCE_DD = 180;
+const DEFAULT_LOAD = 0.5;
 const DEFAULT_YEAR = 2026;
 const YEARS = [2023, 2024, 2025, 2026];
 
@@ -114,6 +118,10 @@ export default function Home() {
   const [dwt, setDwt] = useState(DEFAULT_DWT);
   const [serviceSpeed, setServiceSpeed] = useState(DEFAULT_SERVICE_SPEED);
   const [year, setYear] = useState(DEFAULT_YEAR);
+  // Vessel inputs feeding the log-linear fuel formula (draft, fouling, load).
+  const [draftDm, setDraftDm] = useState(DEFAULT_DRAFT_DM);
+  const [daysSinceDrydock, setDaysSinceDrydock] = useState(DEFAULT_DAYS_SINCE_DD);
+  const [load, setLoad] = useState(DEFAULT_LOAD);
   // One weather factor per resampled leg; >1.0 marks rougher water.
   const [weather, setWeather] = useState<number[]>(Array(NUM_LEGS).fill(1.0));
   // When ON, per-leg factors come from live marine weather (sliders read-only).
@@ -260,6 +268,9 @@ export default function Home() {
         ets_price: etsPrice,
         eu_scope_fraction: euScopeFraction,
         auto_weather: autoWeather,
+        draft_dm: draftDm,
+        days_since_drydock: daysSinceDrydock,
+        load,
       };
       const res = await fetch(`${API}/optimize`, {
         method: "POST",
@@ -370,6 +381,44 @@ export default function Home() {
                 value={dwt}
                 onChange={(e) => setDwt(Number(e.target.value))}
                 className="pruva-input"
+              />
+            </div>
+            {/* Vessel inputs for the log-linear fuel formula (F1). */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="pruva-label">Draft Dm (m)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={draftDm}
+                  onChange={(e) => setDraftDm(Number(e.target.value))}
+                  className="pruva-input"
+                />
+              </div>
+              <div>
+                <label className="pruva-label">Drydock&apos;tan gün</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={daysSinceDrydock}
+                  onChange={(e) => setDaysSinceDrydock(Number(e.target.value))}
+                  className="pruva-input"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="pruva-label">
+                Yük oranı: {load.toFixed(2)} (0 balast → 1 tam yük)
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={load}
+                onChange={(e) => setLoad(Number(e.target.value))}
+                className="w-full accent-[var(--accent)]"
               />
             </div>
           </Section>

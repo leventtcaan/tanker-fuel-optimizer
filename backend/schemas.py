@@ -37,6 +37,17 @@ class OptimizeRequest(BaseModel):
     vmin: float = Field(10.0, description="Minimum allowed per-leg speed, in knots.")
     vmax: float = Field(16.0, description="Maximum allowed per-leg speed, in knots.")
 
+    # Vessel inputs for the log-linear fuel model (optional; sensible defaults).
+    draft_dm: float = Field(
+        12.0, gt=0, description="Mean draft Dm, in metres (fuel model input)."
+    )
+    days_since_drydock: float = Field(
+        180.0, ge=0, description="Days since last drydock (hull-fouling proxy)."
+    )
+    load: float = Field(
+        0.5, ge=0, le=1, description="Load/ballast state: 0 ballast .. 1 fully laden."
+    )
+
     # Real sea-routing path (optional). When both are set to known port names,
     # the backend builds a real ocean route and resamples it into num_legs legs.
     origin: str | None = Field(None, description="Origin port name (see /ports).")

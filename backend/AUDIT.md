@@ -14,9 +14,39 @@ compliance tool.
 
 ---
 
+## UPDATE — Phase F1: fuel model swapped to log-linear (2026-06-23)
+
+The engine fuel function is no longer the cubic power law. It is now the teammates'
+**log-linear (Admiralty-extended) model** (`fuel_model.daily_fuel_loglinear`):
+
+    FC = FC0 · (V/Vref)^b1 · exp( b2·B + b3·Hs + b4·cos θ + b5·(Dm−10) + bL·load + b7·(d_DD−180) )
+
+- Coefficients are LITERATURE / slide-based, not fitted here (see
+  `_reference/screens/formula.png`): Vref=12, b1=2.85, b2=0.082, b3=0.055,
+  b4=−0.048, b5=0.031, bL=0.17, b7=0.00021. They sit inside the slide's published
+  bands (Holtrop-Mennen, Kwon, Schneekluth, Schultz, ITTC/IMO MEPC).
+- FC0 calibrated to ~27 t/day at 12 kn calm (reference draft, half load) for a
+  ~40k DWT mid-size tanker — within the realistic 25-30 t/day band.
+- F1 scope: B=0, wind angle θ=0; Hs is derived from the existing per-leg weather
+  factor (inverse of the weather.py band map) so weather redistribution survives;
+  Dm (12 m), load (0.5), d_DD (180 d) are new optional inputs with defaults.
+- Voyage fuel now scales as V^(b1−1) ≈ V^1.85 (was V² under cubic) — still strictly
+  increasing in speed, so the optimizer and feasibility guard behave identically.
+- **Re-baselined** (numbers shifted with the model, as expected): the 3-leg storm
+  voyage went E→C (cubic) → now E→D at ~25% saving; İzmir→Singapore E→C → now
+  E→D at ~19%. Test assertions updated accordingly; all tests green.
+- The old cubic `daily_fuel` / `voyage_fuel` remain as DEPRECATED helpers (still
+  exercised by the `test_fuel.py` table) but are no longer wired into the engine.
+
+The verified-correct findings below describe the original cubic engine; they remain
+accurate for that deprecated path and for the unchanged CII/economics/optimizer
+structure (which consume fuel *tons* and are insulated from the model swap).
+
+---
+
 ## SOLID (verified correct)
 
-### Fuel model (`fuel_model.py`, `voyage.py`)
+### Fuel model (`fuel_model.py`, `voyage.py`) — original cubic (now deprecated)
 - **Cubic power law applied correctly.** `daily_fuel = c·V³`. Verified V² voyage
   scaling: `voyage_fuel(14)/voyage_fuel(12) = 1.3611` exactly equals `(14/12)² =
   1.3611`. The algebra `c·V³·(d/V/24) = c·V²·d/24` is right.

@@ -175,8 +175,18 @@ async def optimize(req: OptimizeRequest):
 
     distance = sum(leg.distance_nm for leg in legs)
 
-    base = baseline_voyage(legs, req.service_speed)
-    opt = optimize_speed_profile(legs, req.berth_eta_h, req.vmin, req.vmax)
+    base = baseline_voyage(
+        legs, req.service_speed, req.draft_dm, req.load, req.days_since_drydock
+    )
+    opt = optimize_speed_profile(
+        legs,
+        req.berth_eta_h,
+        req.vmin,
+        req.vmax,
+        req.draft_dm,
+        req.load,
+        req.days_since_drydock,
+    )
 
     base_cii = rate_voyage(base["total_fuel"], req.dwt, distance, req.year)
     opt_cii = rate_voyage(opt["total_fuel"], req.dwt, distance, req.year)
