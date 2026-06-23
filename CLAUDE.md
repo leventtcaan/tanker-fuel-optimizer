@@ -525,3 +525,17 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - globals.css: popups/tooltips now LIGHT (white bg, navy text, subtle border+
         shadow); attribution light. (were dark-panel styled.)
       - npm run build OK. bundle 201kB.
+- [x] Chart tooltip/hover fix (display only, no logic/data change). build OK.
+      SpeedProfileChart + FuelCompareChart (Recharts):
+      - replaced default <Tooltip contentStyle> with custom content components
+        (SpeedTooltip/FuelTooltip) — themed card: rounded, border --border, bg
+        --panel, text --text, small label+value, padding. fixes washed-out/
+        light-on-light contrast.
+      - cursor={false} on both Tooltips -> removes the gray hover "ghost" bar.
+      - tooltip content: Speed = "Bacak N" + "Hız X.X kn" + "Hava çarpanı X.X
+        (· fırtına)" (added weather to datum from legs prop, existing data).
+        Fuel = bar name + "Yakıt X t" (tr-TR rounded).
+      - polish: gridlines/axes var(--border)/var(--muted), tickLine off, axisLine
+        subtle; rounded bar tops kept. calm bar blue->teal (--accent), caption
+        "mavi"->"turkuaz". storm red + optimized green + baseline gray kept.
+      - npm run build OK. bundle 202kB.

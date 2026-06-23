@@ -19,8 +19,40 @@ type Props = {
   speeds: number[] | null;
 };
 
-const STORM_COLOR = "#ef4444"; // red-ish: storm leg (weather > 1.0)
-const CALM_COLOR = "#3b82f6"; // blue-ish: calm leg
+const STORM_COLOR = "#ef4444"; // red: storm leg (weather > 1.0)
+const CALM_COLOR = "#2dd4bf"; // teal: calm leg (matches the UI accent)
+
+type SpeedDatum = {
+  name: string;
+  speed: number;
+  isStorm: boolean;
+  weather: number;
+};
+
+// Themed tooltip card (matches our dark panels). Replaces Recharts' washed-out
+// default so text stays legible on its background.
+function SpeedTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: SpeedDatum }[];
+}) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--panel)] text-[var(--text)] px-3 py-2 shadow-lg text-xs">
+      <p className="font-semibold mb-0.5">{d.name}</p>
+      <p>
+        Hız: <span className="font-medium">{d.speed.toFixed(1)} kn</span>
+      </p>
+      <p className="text-[var(--muted)]">
+        Hava çarpanı: {d.weather.toFixed(1)}
+        {d.isStorm ? " · fırtına" : ""}
+      </p>
+    </div>
+  );
+}
 
 /**
  * Bar chart of the optimized speed per leg. Storm legs (weather > 1.0) are
@@ -30,11 +62,13 @@ const CALM_COLOR = "#3b82f6"; // blue-ish: calm leg
 export default function SpeedProfileChart({ legs, speeds }: Props) {
   if (!speeds) return null;
 
-  // Pair each leg's optimized speed with its weather, so we can color by storm.
-  const data = speeds.map((speed, i) => ({
+  // Pair each leg's optimized speed with its weather, so we can color by storm
+  // and surface the weather factor on hover.
+  const data: SpeedDatum[] = speeds.map((speed, i) => ({
     name: `Bacak ${i + 1}`,
     speed: Number(speed.toFixed(2)),
     isStorm: (legs[i]?.weather ?? 1.0) > 1.0,
+    weather: legs[i]?.weather ?? 1.0,
   }));
 
   return (
@@ -42,29 +76,31 @@ export default function SpeedProfileChart({ legs, speeds }: Props) {
       <h2 className="font-semibold mb-2">Bacak Bazında Optimize Hız (knot)</h2>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1f3a57" />
-          <XAxis dataKey="name" tick={{ fill: "#93a7bd", fontSize: 12 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis
+            dataKey="name"
+            tick={{ fill: "var(--muted)", fontSize: 12 }}
+            tickLine={false}
+            axisLine={{ stroke: "var(--border)" }}
+          />
           <YAxis
             domain={[0, "dataMax + 2"]}
             unit=" kn"
-            tick={{ fill: "#93a7bd", fontSize: 12 }}
+            tick={{ fill: "var(--muted)", fontSize: 12 }}
+            tickLine={false}
+            axisLine={{ stroke: "var(--border)" }}
           />
-          <Tooltip
-            formatter={(value) => [`${value} kn`, "Hız"]}
-            contentStyle={{ background: "#13283f", border: "1px solid #1f3a57", color: "#e6eef6" }}
-          />
+          {/* cursor={false} kills the gray "ghost" highlight rect on hover. */}
+          <Tooltip content={<SpeedTooltip />} cursor={false} />
           <Bar dataKey="speed" radius={[4, 4, 0, 0]}>
             {data.map((entry, i) => (
-              <Cell
-                key={i}
-                fill={entry.isStorm ? STORM_COLOR : CALM_COLOR}
-              />
+              <Cell key={i} fill={entry.isStorm ? STORM_COLOR : CALM_COLOR} />
             ))}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
       <p className="text-xs text-[var(--muted)] mt-2">
-        Kırmızı = fırtına bacağı (yavaşla), mavi = sakin bacak.
+        Kırmızı = fırtına bacağı (yavaşla), turkuaz = sakin bacak.
       </p>
     </div>
   );
