@@ -12,9 +12,14 @@ search or display a nameless port. Every record has WGS84 lat/lon.
 """
 
 import json
+import math
 import os
 
 _DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "ports.json")
+
+# Earth's mean radius in nautical miles (same constant as routing.py), used by
+# nearest_port to rank ports by great-circle distance from a clicked point.
+_EARTH_RADIUS_NM = 3440.065
 
 # Rank port_size categories so larger ports surface first in search results.
 _SIZE_RANK = {"Major": 0, "Minor": 1, "Small": 2, "Very Small": 3}
@@ -122,6 +127,47 @@ def port_by_name(name):
     """Resolve a known port name to (lat, lon), or None if not found."""
     p = _BY_NAME.get(name.strip().lower())
     return (p["lat"], p["lon"]) if p else None
+
+
+def _haversine_nm(lat1, lon1, lat2, lon2):
+    """Great-circle distance between two [lat, lon] points, in nautical miles.
+
+    Self-contained here (mirrors routing._haversine_nm) so ports.py stays free of
+    the heavy searoute import that routing.py pulls in.
+    """
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(d_lon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return _EARTH_RADIUS_NM * c
+
+
+def nearest_port(lat, lon):
+    """Return the closest NAMED port to a [lat, lon] point by haversine distance.
+
+    Brute-force scan over the in-memory named-port list (~3,630 entries). That is
+    a sub-millisecond linear pass; a k-d tree / spatial index would be premature
+    optimization for a list this small and a query this infrequent (one click).
+
+    Returns a public port record plus distance_nm, or None if no ports loaded.
+    """
+    best = None
+    best_dist = None
+    for p in PORTS:
+        d = _haversine_nm(lat, lon, p["lat"], p["lon"])
+        if best_dist is None or d < best_dist:
+            best_dist = d
+            best = p
+    if best is None:
+        return None
+    out = _public(best)
+    out["distance_nm"] = best_dist
+    return out
 
 
 def resolve_latlon(ref):

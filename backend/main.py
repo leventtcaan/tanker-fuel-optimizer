@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from voyage import Leg, leg_time
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
-from ports import curated_ports, search_ports, resolve_latlon
+from ports import curated_ports, search_ports, resolve_latlon, nearest_port
 from routing import get_sea_route, resample_to_legs, leg_midpoints
 from weather import fetch_leg_weather
 from economics import (
@@ -66,6 +66,15 @@ def list_ports():
 def ports_search(q: str, limit: int = 20):
     """Search the full WPI port database by name or country (autocomplete)."""
     return search_ports(q, limit)
+
+
+@app.get("/ports/nearest")
+def ports_nearest(lat: float, lon: float):
+    """Closest named port to a clicked map point (for click-to-pick origin/dest)."""
+    port = nearest_port(lat, lon)
+    if port is None:
+        raise HTTPException(status_code=404, detail="No ports available.")
+    return port
 
 
 @app.get("/zones")

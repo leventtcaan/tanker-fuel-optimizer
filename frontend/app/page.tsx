@@ -129,6 +129,27 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Click-to-pick mode: clicking the map snaps the chosen endpoint to the
+  // nearest named port. "off" disables map clicks (default).
+  const [pickMode, setPickMode] = useState<"off" | "origin" | "dest">("off");
+
+  // Snap a clicked map point to the nearest named port (GET /ports/nearest) and
+  // set it as the active endpoint (Kalkış or Varış).
+  async function handleMapPick(lat: number, lon: number) {
+    if (pickMode === "off") return;
+    try {
+      const res = await fetch(
+        `${API}/ports/nearest?lat=${lat}&lon=${lon}`
+      );
+      if (!res.ok) throw new Error();
+      const port: Port = await res.json();
+      if (pickMode === "origin") setOriginPort(port);
+      else setDestPort(port);
+    } catch {
+      setError("En yakın liman bulunamadı");
+    }
+  }
+
   // Default-fill İstanbul -> Singapore from the curated /ports list on mount.
   useEffect(() => {
     fetch(`${API}/ports`)
@@ -474,13 +495,44 @@ export default function Home() {
         </div>
 
         {/* CENTER: the hero map — large, fills the viewport height on desktop. */}
-        <div className="lg:h-[calc(100vh-6rem)] min-h-[480px]">
-          <RouteMap
-            routeCoords={routeCoords}
-            originName={originPort ? titleCase(originPort.name) : undefined}
-            destName={destPort ? titleCase(destPort.name) : undefined}
-            legsWeather={result?.legs_weather ?? null}
-          />
+        <div className="lg:h-[calc(100vh-6rem)] min-h-[480px] flex flex-col gap-2">
+          {/* Click-to-pick mode toggle: snap a map click to the nearest port. */}
+          <div className="pruva-card p-2 flex items-center gap-2 text-sm">
+            <span className="text-[var(--muted)]">Haritadan seç:</span>
+            {([
+              ["origin", "Kalkış"],
+              ["dest", "Varış"],
+              ["off", "Kapalı"],
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setPickMode(mode)}
+                className={`rounded-lg px-3 py-1 font-medium border ${
+                  pickMode === mode
+                    ? "bg-[var(--accent)] text-[#04201c] border-[var(--accent)]"
+                    : "border-[var(--border)] text-[var(--text)] hover:border-[var(--accent)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            {pickMode !== "off" && (
+              <span className="ml-auto text-xs text-[var(--accent)]">
+                Haritaya tıklayın → en yakın liman {pickMode === "origin" ? "kalkış" : "varış"} olur
+              </span>
+            )}
+          </div>
+
+          <div className="flex-1 min-h-[460px]">
+            <RouteMap
+              routeCoords={routeCoords}
+              originName={originPort ? titleCase(originPort.name) : undefined}
+              destName={destPort ? titleCase(destPort.name) : undefined}
+              legsWeather={result?.legs_weather ?? null}
+              pickMode={pickMode}
+              onMapPick={handleMapPick}
+            />
+          </div>
         </div>
 
         {/* RIGHT: results */}

@@ -314,4 +314,19 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         flag DivIcon, name popups. fit bounds. ssr:false kept.
       - map taller/hero (lg h calc(100vh-6rem), min 480). 3-col holds, stacks mobile.
       - npm run build OK. bundle 198kB.
-- [ ] Phase D — NEXT. (define when start)
+- [x] Phase D — click map to pick nearest port. DONE. backend test green, build OK.
+      YAGNI: brute-force nearest over in-memory ports (~3630), no spatial index.
+      BACKEND (done + verified first):
+      - ports.py: nearest_port(lat,lon) -> closest NAMED port by haversine over
+        PORTS list. local _haversine_nm helper (mirrors routing, no searoute
+        import pulled into ports). returns {id,name,country,lat,lon,distance_nm}.
+      - main.py: GET /ports/nearest?lat=&lon= -> nearest_port (404 if none).
+      - test_api.py: test_nearest_port — click (38.4,27.1)->IZMIR Turkey 2.3nm;
+        click (1.27,103.8)->PULAU BUKOM Singapore 3.0nm. both <60nm. GREEN.
+      FRONTEND (after green):
+      - page.tsx: pickMode state ("off"|"origin"|"dest", default off). toggle
+        "Haritadan seç: [Kalkış][Varış][Kapalı]" above map. handleMapPick(lat,lon)
+        -> GET /ports/nearest -> setOriginPort/setDestPort (route_info refetches).
+      - RouteMap.tsx: MapClickPicker via useMapEvents 'click' -> onMapPick;
+        crosshair cursor while active. new optional props pickMode/onMapPick.
+      - npm run build OK. bundle 198kB.

@@ -75,6 +75,24 @@ def test_port_search():
     return izmir[0], sing[0]
 
 
+def test_nearest_port():
+    """Phase D: /ports/nearest returns the closest named port to a clicked point."""
+    # Clicking near İzmir (38.4 N, 27.1 E) should land on a Turkish port nearby.
+    izmir = client.get("/ports/nearest", params={"lat": 38.4, "lon": 27.1}).json()
+    assert izmir["country"] == "Turkey", izmir
+    assert izmir["distance_nm"] < 60, izmir  # clicked point is right on the coast
+
+    # Clicking near Singapore (1.27 N, 103.8 E) should land on a Singapore-area port.
+    sing = client.get("/ports/nearest", params={"lat": 1.27, "lon": 103.8}).json()
+    assert sing["distance_nm"] < 60, sing
+    assert "SINGAPORE" in sing["name"].upper() or sing["country"] == "Singapore", sing
+
+    print("\n=== Nearest port (click-to-pick) ===")
+    print(f"  near İzmir     : {izmir['name']} ({izmir['country']}) {izmir['distance_nm']:.1f} nm")
+    print(f"  near Singapore : {sing['name']} ({sing['country']}) {sing['distance_nm']:.1f} nm")
+    print("Nearest-port assertions passed.")
+
+
 def test_real_routing():
     """Phase 6+A: full /optimize using two SEARCHED ports (by lat,lon)."""
     origin_port, dest_port = test_port_search()
@@ -221,6 +239,7 @@ def test_weather_fallback():
 
 if __name__ == "__main__":
     main()
+    test_nearest_port()
     test_real_routing()
     test_infeasible_eta()
     test_auto_weather()

@@ -12,6 +12,7 @@ import {
   TileLayer,
   Tooltip,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -27,11 +28,15 @@ type ZoneFeature = {
   geometry: { type: "Polygon"; coordinates: number[][][] };
 };
 
+type PickMode = "off" | "origin" | "dest";
+
 type Props = {
   routeCoords: LatLon[];
   originName?: string;
   destName?: string;
   legsWeather?: LegWeather[] | null;
+  pickMode?: PickMode;
+  onMapPick?: (lat: number, lon: number) => void;
 };
 
 const ROUTE_TEAL = "#2dd4bf";
@@ -66,6 +71,30 @@ function legChunks(coords: LatLon[], k: number): LatLon[][] {
   return chunks;
 }
 
+// When pick mode is active, forward map clicks (lat, lon) to the parent, which
+// snaps them to the nearest port. A crosshair cursor signals the mode is live.
+function MapClickPicker({
+  pickMode,
+  onMapPick,
+}: {
+  pickMode: PickMode;
+  onMapPick: (lat: number, lon: number) => void;
+}) {
+  const map = useMapEvents({
+    click(e) {
+      if (pickMode !== "off") onMapPick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  useEffect(() => {
+    const el = map.getContainer();
+    el.style.cursor = pickMode === "off" ? "" : "crosshair";
+    return () => {
+      el.style.cursor = "";
+    };
+  }, [pickMode, map]);
+  return null;
+}
+
 // Fit the map to the route whenever the coordinates change.
 function FitBounds({ coords }: { coords: LatLon[] }) {
   const map = useMap();
@@ -87,6 +116,8 @@ export default function RouteMap({
   originName,
   destName,
   legsWeather,
+  pickMode = "off",
+  onMapPick,
 }: Props) {
   const [zones, setZones] = useState<ZoneFeature[]>([]);
 
@@ -180,6 +211,10 @@ export default function RouteMap({
             </LayerGroup>
           </LayersControl.Overlay>
         </LayersControl>
+
+        {onMapPick && (
+          <MapClickPicker pickMode={pickMode} onMapPick={onMapPick} />
+        )}
 
         {hasRoute && (
           <>
