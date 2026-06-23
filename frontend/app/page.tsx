@@ -155,6 +155,35 @@ function pctToNextGrade(ratio: number): number | null {
   return ((ratio - lower) / ratio) * 100;
 }
 
+// Reference Brent price (USD/bbl) for the top metric bar. NOT live and NOT from
+// the API (/prices carries bunker grades + ETS, not Brent) — shown clearly as an
+// editable reference value alongside the others.
+const DEFAULT_BRENT = 77.6;
+// HFO carbon factor — display only (estimated CO₂ = fuel × CF); same value the
+// engine uses, no recomputation of any optimized result here.
+const CO2_PER_T = 3.114;
+
+// Known chokepoint / risk gates as [latMin, latMax, lonMin, lonMax]. Used purely
+// to DERIVE honest warning text from the returned route polyline — no engine call.
+const GATES: { box: number[]; label: string }[] = [
+  { box: [40.9, 41.4, 28.9, 29.3], label: "İstanbul Boğazı geçişi" },
+  { box: [29.8, 31.4, 32.2, 32.7], label: "Süveyş Kanalı geçişi" },
+  { box: [0.5, 6.0, 98.0, 104.5], label: "Malacca Boğazı geçişi" },
+];
+// Gulf of Aden / Arabian Sea piracy area (approx), for the HRA warning/badge.
+const HRA_BOX = [8.0, 20.0, 43.0, 68.0];
+
+const inBox = (lat: number, lon: number, box: number[]) =>
+  lat >= box[0] && lat <= box[1] && lon >= box[2] && lon <= box[3];
+
+const routeCrossesHra = (coords: number[][]) =>
+  coords.some(([lat, lon]) => inBox(lat, lon, HRA_BOX));
+
+const routeChokepoints = (coords: number[][]) =>
+  GATES.filter((g) => coords.some(([lat, lon]) => inBox(lat, lon, g.box))).map(
+    (g) => g.label
+  );
+
 // Collapsible input group with a clickable header.
 function Section({
   title,
@@ -176,6 +205,68 @@ function Section({
         <span className="text-[var(--muted)]">{open ? "−" : "+"}</span>
       </button>
       {open && <div className="mt-2.5 space-y-2.5">{children}</div>}
+    </div>
+  );
+}
+
+// One labelled cell in the "Sefer Tahmini" metric grid.
+function Metric({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-2.5">
+      <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
+        {label}
+      </p>
+      <p className="text-base font-bold mt-0.5 leading-tight">{value}</p>
+      {sub && <p className="text-[11px] text-[var(--muted)] mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+// Full-width reference market strip under the header (Brent / VLSFO / LSMGO /
+// EU ETS). Values are editable REFERENCE prices, NOT a live feed — labelled so.
+function MetricBar({
+  brent,
+  vlsfo,
+  lsmgo,
+  ets,
+}: {
+  brent: number;
+  vlsfo: number;
+  lsmgo: number;
+  ets: number;
+}) {
+  const items: [string, number, string][] = [
+    ["Brent", brent, "USD/varil"],
+    ["VLSFO", vlsfo, "USD/t"],
+    ["LSMGO", lsmgo, "USD/t"],
+    ["EU ETS", ets, "EUR/tCO₂"],
+  ];
+  return (
+    <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--panel)] px-5 py-2 text-sm">
+      <span className="text-[10px] uppercase tracking-wide text-[var(--muted)] mr-2 shrink-0">
+        Piyasa · referans
+      </span>
+      {items.map(([label, val, unit]) => (
+        <div
+          key={label}
+          className="flex items-baseline gap-1.5 px-3 border-l border-[var(--border)] first:border-l-0 shrink-0"
+        >
+          <span className="text-[var(--muted)] text-xs">{label}</span>
+          <span className="font-semibold">{val.toLocaleString("tr-TR")}</span>
+          <span className="text-[10px] text-[var(--muted)]">{unit}</span>
+        </div>
+      ))}
+      <span className="ml-auto text-[10px] text-[var(--muted)] shrink-0 pl-2">
+        canlı değil · düzenlenebilir
+      </span>
     </div>
   );
 }
@@ -464,6 +555,22 @@ export default function Home() {
   const scenarioCost = (s: ScenarioOut) =>
     s.eca_nm > 0 ? s.blended_fuel_cost_usd : s.fuel_cost_usd;
 
+  // Honest "Kritik Uyarı" list + zone facts, derived from the returned route
+  // polyline and ECA distance only (no engine call). HRA + chokepoint gates are
+  // simple lon/lat boxes; ECA distance is the existing baseline.eca_nm field.
+  const dispCoords = displayResult?.route_coords ?? [];
+  const warnHra = dispCoords.length > 0 && routeCrossesHra(dispCoords);
+  const chokepoints = dispCoords.length > 0 ? routeChokepoints(dispCoords) : [];
+  const dispEcaNm = displayResult?.baseline.eca_nm ?? 0;
+  const warnings: { label: string; tone: "e" | "c" | "muted" }[] = [];
+  if (warnHra)
+    warnings.push({ label: "Korsanlık riski (HRA) — Aden Körfezi", tone: "e" });
+  if (dispEcaNm > 0)
+    warnings.push({ label: "ECA — düşük kükürtlü yakıt zorunlu", tone: "c" });
+  chokepoints.forEach((c) => warnings.push({ label: c, tone: "muted" }));
+  const warnTone = (t: "e" | "c" | "muted") =>
+    t === "e" ? "var(--grade-e)" : t === "c" ? "var(--grade-c)" : "var(--muted)";
+
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* Top bar: PRUVA wordmark + tagline + honest DEMO pill. */}
@@ -478,6 +585,14 @@ export default function Home() {
           DEMO
         </span>
       </header>
+
+      {/* Reference market strip (editable, NOT live). */}
+      <MetricBar
+        brent={DEFAULT_BRENT}
+        vlsfo={fuelPrices.VLSFO ?? 0}
+        lsmgo={fuelPrices.LSMGO ?? 0}
+        ets={etsPrice}
+      />
 
       {/* Responsive 3-column layout: inputs | map | results. */}
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_400px] gap-3 p-3">
@@ -627,9 +742,11 @@ export default function Home() {
               );
             })}
 
-            {/* Per-leg live wave height + source badge (after optimize). */}
+            {/* Per-leg live detail — collapsible + scrollable so it never floods
+                the panel with 6×2 always-visible lines. */}
             {autoWeather && result?.legs_weather && (
-              <div className="space-y-0.5">
+              <Section title="Bacak detayları (canlı hava/akıntı)" defaultOpen={false}>
+              <div className="space-y-0.5 max-h-44 overflow-y-auto pr-1">
                 {result.legs_weather.map((lw, i) => (
                   <div key={i} className="text-xs">
                     <div className="flex items-center justify-between">
@@ -663,6 +780,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              </Section>
             )}
 
             {autoWeather && (
@@ -898,30 +1016,109 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Yakıt & CII summary. */}
-              <div className="pruva-card p-4 space-y-1 text-sm">
-                <h2 className="font-semibold mb-2">Yakıt &amp; CII</h2>
-                <div className="flex justify-between">
-                  <span className="text-[var(--muted)]">Toplam mesafe</span>
-                  <span>{fmt(displayResult.distance_nm)} nm</span>
+              {/* SEFER TAHMİNİ — route header, warnings, zone chips, metric grid. */}
+              <div className="pruva-card p-4 space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-bold tracking-wide">SEFER TAHMİNİ</h2>
+                    <span className="text-[10px] text-[var(--muted)]">
+                      Gerçek Deniz Rotası
+                    </span>
+                  </div>
+                  <p className="text-sm text-[var(--muted)] mt-0.5">
+                    {originPort ? titleCase(originPort.name) : "Kalkış"} →{" "}
+                    {destPort ? titleCase(destPort.name) : "Varış"} ·{" "}
+                    {fmt(displayResult.optimized.total_time_h)} sa
+                  </p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--muted)]">Baz / Optimize yakıt</span>
-                  <span>
-                    {fmt(displayResult.baseline.fuel_t)} →{" "}
-                    {fmt(displayResult.optimized.fuel_t)} t
+
+                {/* Kritik Uyarı list (real, derived from the route). */}
+                {warnings.length > 0 && (
+                  <div className="rounded-lg border border-[var(--grade-d)] bg-[rgba(249,115,22,0.08)] p-2.5">
+                    <p className="text-xs font-semibold text-[var(--grade-d)] mb-1">
+                      ⚠ KRİTİK UYARI: {warnings.length} uyarı
+                    </p>
+                    <ul className="space-y-0.5">
+                      {warnings.map((w, i) => (
+                        <li
+                          key={i}
+                          className="text-xs flex items-center gap-1.5"
+                          style={{ color: warnTone(w.tone) }}
+                        >
+                          <span>•</span>
+                          {w.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Zone chips. */}
+                <div className="flex gap-2 flex-wrap">
+                  <span
+                    className="text-[11px] px-2 py-0.5 rounded-full border"
+                    style={{
+                      borderColor:
+                        dispEcaNm > 0 ? "var(--grade-c)" : "var(--border)",
+                      color: dispEcaNm > 0 ? "var(--grade-c)" : "var(--muted)",
+                    }}
+                  >
+                    ECA: {dispEcaNm > 0 ? `${fmt(dispEcaNm)} nm` : "yok"}
+                  </span>
+                  <span
+                    className="text-[11px] px-2 py-0.5 rounded-full border"
+                    style={{
+                      borderColor: warnHra ? "var(--grade-e)" : "var(--grade-a)",
+                      color: warnHra ? "var(--grade-e)" : "var(--grade-a)",
+                    }}
+                  >
+                    HRA: {warnHra ? "var" : "yok"}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--muted)]">Baz / Optimize maliyet</span>
-                  <span>
-                    ${fmt(scenarioCost(displayResult.baseline))} → $
-                    {fmt(scenarioCost(displayResult.optimized))}
-                  </span>
+
+                {/* Metric grid (2-col, like the presented dashboard). */}
+                <div className="grid grid-cols-2 gap-2">
+                  <Metric label="Mesafe" value={`${fmt(displayResult.distance_nm)} nm`} />
+                  <Metric
+                    label="Sefer Süresi"
+                    value={`${fmt(displayResult.optimized.total_time_h)} sa`}
+                    sub={`ETA hedefi ${fmt(berthEta)} sa`}
+                  />
+                  <Metric
+                    label="Tahmini Yakıt"
+                    value={`${fmt(displayResult.optimized.fuel_t)} t`}
+                    sub={`baz ${fmt(displayResult.baseline.fuel_t)} t`}
+                  />
+                  <Metric
+                    label="Tahmini CO₂"
+                    value={`${fmt(displayResult.optimized.fuel_t * CO2_PER_T)} t`}
+                    sub={`baz ${fmt(displayResult.baseline.fuel_t * CO2_PER_T)} t`}
+                  />
+                  <Metric
+                    label="Yakıt Maliyeti"
+                    value={`$${fmt(scenarioCost(displayResult.optimized))}`}
+                    sub={`baz $${fmt(scenarioCost(displayResult.baseline))}`}
+                  />
+                  <Metric
+                    label="EU ETS Maliyeti"
+                    value={`€${fmt(displayResult.optimized.ets_cost_eur)}`}
+                    sub={
+                      euScopeFraction > 0
+                        ? `kapsam %${Math.round(euScopeFraction * 100)}`
+                        : "kapsam dışı"
+                    }
+                  />
                 </div>
-                {/* Attained CII number — improvement is visible even when the
-                    A-E grade does not change (e.g. E -> E). */}
-                <div className="flex justify-between">
+              </div>
+
+              {/* CII pill (own card) + attained drop — improvement visible even
+                  when the A-E grade holds (e.g. E -> E). */}
+              <CiiBadge
+                baselineGrade={displayResult.baseline.cii_grade}
+                optimizedGrade={displayResult.optimized.cii_grade}
+              />
+              <div className="pruva-card p-3 space-y-1">
+                <div className="flex items-center justify-between text-xs">
                   <span className="text-[var(--muted)]">Atılan CII (g/dwt·nm)</span>
                   <span>
                     {displayResult.baseline.attained_cii.toFixed(1)} →{" "}
@@ -931,36 +1128,16 @@ export default function Home() {
                 {(() => {
                   const pct = pctToNextGrade(displayResult.optimized.cii_ratio);
                   return pct != null ? (
-                    <p className="text-xs text-[var(--muted)] pt-0.5">
+                    <p className="text-[11px] text-[var(--muted)]">
                       Bir alt CII kademesine %{pct.toFixed(0)} kaldı
                     </p>
                   ) : (
-                    <p className="text-xs text-[var(--grade-a)] pt-0.5">
+                    <p className="text-[11px] text-[var(--grade-a)]">
                       En iyi CII kademesinde (A)
                     </p>
                   );
                 })()}
-                {euScopeFraction > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-[var(--muted)]">ETS (baz / optimize)</span>
-                    <span>
-                      €{fmt(displayResult.baseline.ets_cost_eur)} → €
-                      {fmt(displayResult.optimized.ets_cost_eur)}
-                    </span>
-                  </div>
-                )}
-                {displayResult.baseline.eca_nm > 0 && (
-                  <p className="text-[var(--grade-a)] pt-1">
-                    Rotanın {fmt(displayResult.baseline.eca_nm)} nm&apos;si ECA içinde
-                    (düşük kükürt zorunlu, pahalı yakıt)
-                  </p>
-                )}
               </div>
-
-              <CiiBadge
-                baselineGrade={displayResult.baseline.cii_grade}
-                optimizedGrade={displayResult.optimized.cii_grade}
-              />
 
               {/* Rota Alternatifleri — compare candidates and pick one. */}
               {(altLoading || (alternatives && alternatives.length > 1)) && (

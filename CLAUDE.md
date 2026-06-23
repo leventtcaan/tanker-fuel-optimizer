@@ -453,3 +453,28 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         RouteMap routeColor prop. "En kısaya dön" resets. CII CARD FIX: shows
         "Atılan CII X.X -> Y.Y" + "bir alt CII kademesine %N kaldı" (pctToNextGrade
         from IMO bounds) so improvement visible even E->E. npm run build OK. 200kB.
+- [x] Phase F5 — dashboard reskin matching presented PRUVA layout. DONE. build OK.
+      PURE PRESENTATION — ZERO logic/number/endpoint changes (optimizer/CII/econ/
+      weather/routing/alt-routes untouched). frontend page.tsx + RouteMap only.
+      target = _reference/screens/dashboard.png LAYOUT (NOT its fake data, NOT
+      Karadeniz branding — standalone product). kept honest DEMO pill.
+      - TOP METRIC BAR (new MetricBar comp): full-width strip under header —
+        Brent/VLSFO/LSMGO/EU ETS. VLSFO/LSMGO/ETS from existing /prices state;
+        Brent = frontend DEFAULT_BRENT const (since /prices has no Brent). labeled
+        "Piyasa · referans" + "canlı değil · düzenlenebilir" (honest, not canlı).
+      - RIGHT "SEFER TAHMİNİ" card (restructured, replaces old Yakıt&CII card):
+        header (origin->dest · süre · "Gerçek Deniz Rotası"); KRİTİK UYARI list
+        DERIVED client-side from route_coords (HRA bbox + Süveyş/İst.Boğazı/Malacca
+        lon-lat gates) + eca_nm; zone chips (ECA: X nm / HRA: var-yok colored);
+        2-col METRIC GRID (Metric comp): Mesafe, Sefer Süresi+ETA, Tahmini Yakıt
+        baz->opt, Tahmini CO2 (fuel*3.114 display-only), Yakıt Maliyeti baz->opt,
+        EU ETS. all from EXISTING response fields. Para Tasarrufu hero + CII pill
+        (E->E attained X->Y + % to next grade) kept.
+      - DENSITY: per-leg live detail wrapped in nested collapsible "Bacak
+        detayları" (closed) + max-h-44 scroll; tightened paddings; map stays hero;
+        3-col desktop / stacked mobile. Rota Alternatifleri (F4) panel kept in
+        right column, usable.
+      - HONESTY: no field invented — HRA/chokepoints derived from returned
+        route_coords bbox/gates; CO2 = fuel×CF (same factor engine uses, display
+        only); prices clearly reference. npm run build OK. bundle 201kB.
+      MVP feature + visually complete.
