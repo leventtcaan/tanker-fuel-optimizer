@@ -510,3 +510,18 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         round lineCap/lineJoin, subtle .pruva-route-glow drop-shadow (route only,
         not zones). storm-leg red kept. CARTO dark + OpenSeaMap + layer control
         intact. npm run build OK. bundle 201kB.
+- [x] Map -> LIGHT professional basemap (Signal-Ocean style). display only, map only.
+      RouteMap.tsx + globals.css (panels/cards untouched).
+      - DEFAULT basemap now CARTO Voyager (light, subtle labels); CARTO Koyu (dark)
+        still selectable in layer control. OpenSeaMap overlay + control kept.
+      - route: understated navy (#1f3a57) line weight 3 + thin white casing weight6
+        (was thick teal weight5 + glow); removed .pruva-route-glow. storm legs red
+        (#e11d48) slimmer. routeColor default ROUTE_TEAL -> ROUTE_NAVY (alt-route
+        teal/amber/purple still read on light).
+      - markers: elegant SVG teardrop pins (was teal dot + 🏁 flag) — origin navy,
+        dest red, white center dot, soft drop-shadow.
+      - zones softer on light: ECA teal fill 0.10 + 1.2px #0d9488 stroke; HRA red
+        fill 0.10 + 1.3px dashed (5 6) stroke. smoothFactor 3 kept.
+      - globals.css: popups/tooltips now LIGHT (white bg, navy text, subtle border+
+        shadow); attribution light. (were dark-panel styled.)
+      - npm run build OK. bundle 201kB.

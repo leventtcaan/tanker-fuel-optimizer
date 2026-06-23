@@ -42,24 +42,25 @@ type Props = {
   routeColor?: string;
 };
 
-const ROUTE_TEAL = "#2dd4bf";
-const ROUTE_STORM = "#ef4444";
+const ROUTE_TEAL = "#2dd4bf"; // ECA zone tint + alternative-route fallback colour
+const ROUTE_NAVY = "#1f3a57"; // understated dark route line for the light basemap
+const ROUTE_STORM = "#e11d48"; // storm-leg red (slightly deeper for the light map)
 const CASING = "#ffffff";
 const STORM_FACTOR = 1.2; // legs above this are drawn red
 
-// Custom markers: teal dot for the start, checkered flag for the destination.
-const ORIGIN_ICON = L.divIcon({
-  className: "",
-  html: `<div style="width:14px;height:14px;border-radius:50%;background:${ROUTE_TEAL};border:2px solid #fff;box-shadow:0 0 5px rgba(0,0,0,.6)"></div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
-const DEST_ICON = L.divIcon({
-  className: "",
-  html: `<div style="font-size:20px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))">🏁</div>`,
-  iconSize: [20, 20],
-  iconAnchor: [3, 18],
-});
+// Elegant teardrop pin marker (SVG), tinted per role. Reads well on a light map.
+const teardrop = (fill: string) =>
+  L.divIcon({
+    className: "",
+    html: `<svg width="22" height="30" viewBox="0 0 22 30" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">
+      <path d="M11 0C5 0 0 4.7 0 10.6 0 18.4 11 30 11 30s11-11.6 11-19.4C22 4.7 17 0 11 0z" fill="${fill}"/>
+      <circle cx="11" cy="10.5" r="4" fill="#ffffff"/>
+    </svg>`,
+    iconSize: [22, 30],
+    iconAnchor: [11, 30],
+  });
+const ORIGIN_ICON = teardrop(ROUTE_NAVY);
+const DEST_ICON = teardrop(ROUTE_STORM);
 
 // Split the full polyline into k contiguous chunks matching the backend's leg
 // resampling, so each leg segment can be colored by its weather.
@@ -110,9 +111,9 @@ function FitBounds({ coords }: { coords: LatLon[] }) {
 }
 
 /**
- * Hero map: CARTO dark basemap + OpenSeaMap seamark overlay, ECA/HRA zone
- * polygons, and the weather-colored route with a white casing. Layers are
- * toggleable via the top-right control.
+ * Hero map: a light professional CARTO Voyager basemap (dark selectable) +
+ * OpenSeaMap seamark overlay, soft ECA/HRA zone tints, and an understated navy
+ * route line. Layers are toggleable via the top-right control.
  */
 export default function RouteMap({
   routeCoords,
@@ -121,7 +122,7 @@ export default function RouteMap({
   legsWeather,
   pickMode = "off",
   onMapPick,
-  routeColor = ROUTE_TEAL,
+  routeColor = ROUTE_NAVY,
 }: Props) {
   const [zones, setZones] = useState<ZoneFeature[]>([]);
 
@@ -156,16 +157,16 @@ export default function RouteMap({
         style={{ height: "100%", minHeight: "460px", width: "100%" }}
       >
         <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="CARTO Koyu">
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            />
-          </LayersControl.BaseLayer>
-          <LayersControl.BaseLayer name="CARTO Voyager">
+          <LayersControl.BaseLayer checked name="CARTO Voyager (açık)">
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
               url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="CARTO Koyu">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             />
           </LayersControl.BaseLayer>
 
@@ -184,10 +185,10 @@ export default function RouteMap({
                   positions={ring(z)}
                   smoothFactor={3}
                   pathOptions={{
-                    color: ROUTE_TEAL,
-                    weight: 1.8,
+                    color: "#0d9488",
+                    weight: 1.2,
                     fillColor: ROUTE_TEAL,
-                    fillOpacity: 0.14,
+                    fillOpacity: 0.1,
                     lineJoin: "round",
                   }}
                 >
@@ -206,10 +207,10 @@ export default function RouteMap({
                   smoothFactor={3}
                   pathOptions={{
                     color: ROUTE_STORM,
-                    weight: 1.8,
+                    weight: 1.3,
                     fillColor: ROUTE_STORM,
-                    fillOpacity: 0.13,
-                    dashArray: "6 6",
+                    fillOpacity: 0.1,
+                    dashArray: "5 6",
                     lineCap: "round",
                     lineJoin: "round",
                   }}
@@ -227,13 +228,13 @@ export default function RouteMap({
 
         {hasRoute && (
           <>
-            {/* White casing underneath for contrast on the dark basemap. */}
+            {/* Thin light casing for contrast against land on the light basemap. */}
             <Polyline
               positions={routeCoords}
               pathOptions={{
                 color: CASING,
-                weight: 9,
-                opacity: 0.45,
+                weight: 6,
+                opacity: 0.8,
                 lineCap: "round",
                 lineJoin: "round",
               }}
@@ -247,10 +248,9 @@ export default function RouteMap({
                     positions={chunk}
                     pathOptions={{
                       color: storm ? ROUTE_STORM : routeColor,
-                      weight: 5,
+                      weight: 3,
                       lineCap: "round",
                       lineJoin: "round",
-                      className: "pruva-route-glow",
                     }}
                   />
                 );
@@ -260,10 +260,9 @@ export default function RouteMap({
                 positions={routeCoords}
                 pathOptions={{
                   color: routeColor,
-                  weight: 5,
+                  weight: 3,
                   lineCap: "round",
                   lineJoin: "round",
-                  className: "pruva-route-glow",
                 }}
               />
             )}
