@@ -56,6 +56,12 @@ body {
   }
 }
 
+/* Subtle, tasteful glow on the route polyline only (not the zones), so it reads
+   cleanly on the dark basemap. */
+.pruva-route-glow {
+  filter: drop-shadow(0 0 2.5px rgba(45, 212, 191, 0.55));
+}
+
 /* Leaflet popups/tooltips on a dark theme. */
 .leaflet-popup-content-wrapper,
 .leaflet-tooltip {

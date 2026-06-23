@@ -182,11 +182,13 @@ export default function RouteMap({
                 <Polygon
                   key={z.properties.name}
                   positions={ring(z)}
+                  smoothFactor={3}
                   pathOptions={{
-                    color: z.properties.color,
-                    weight: 1.5,
-                    fillColor: z.properties.color,
-                    fillOpacity: 0.12,
+                    color: ROUTE_TEAL,
+                    weight: 1.8,
+                    fillColor: ROUTE_TEAL,
+                    fillOpacity: 0.14,
+                    lineJoin: "round",
                   }}
                 >
                   <Tooltip>{z.properties.name}</Tooltip>
@@ -201,12 +203,15 @@ export default function RouteMap({
                 <Polygon
                   key={z.properties.name}
                   positions={ring(z)}
+                  smoothFactor={3}
                   pathOptions={{
-                    color: z.properties.color,
-                    weight: 1.5,
-                    fillColor: z.properties.color,
-                    fillOpacity: 0.15,
-                    dashArray: "6 4",
+                    color: ROUTE_STORM,
+                    weight: 1.8,
+                    fillColor: ROUTE_STORM,
+                    fillOpacity: 0.13,
+                    dashArray: "6 6",
+                    lineCap: "round",
+                    lineJoin: "round",
                   }}
                 >
                   <Tooltip>{z.properties.name}</Tooltip>
@@ -225,7 +230,13 @@ export default function RouteMap({
             {/* White casing underneath for contrast on the dark basemap. */}
             <Polyline
               positions={routeCoords}
-              pathOptions={{ color: CASING, weight: 7, opacity: 0.55 }}
+              pathOptions={{
+                color: CASING,
+                weight: 9,
+                opacity: 0.45,
+                lineCap: "round",
+                lineJoin: "round",
+              }}
             />
             {chunks.length > 0 ? (
               chunks.map((chunk, i) => {
@@ -236,7 +247,10 @@ export default function RouteMap({
                     positions={chunk}
                     pathOptions={{
                       color: storm ? ROUTE_STORM : routeColor,
-                      weight: 4,
+                      weight: 5,
+                      lineCap: "round",
+                      lineJoin: "round",
+                      className: "pruva-route-glow",
                     }}
                   />
                 );
@@ -244,7 +258,13 @@ export default function RouteMap({
             ) : (
               <Polyline
                 positions={routeCoords}
-                pathOptions={{ color: routeColor, weight: 4 }}
+                pathOptions={{
+                  color: routeColor,
+                  weight: 5,
+                  lineCap: "round",
+                  lineJoin: "round",
+                  className: "pruva-route-glow",
+                }}
               />
             )}
 

@@ -120,6 +120,18 @@ const DEFAULT_ETS_PRICE = 85.0;
 // Thousands-separated integer formatting (Turkish locale).
 const fmt = (n: number) => Math.round(n).toLocaleString("tr-TR");
 
+// Duration label (display only — the underlying value stays in hours). For
+// voyages over ~48h, show days alongside hours: "X gün Y sa (Z sa)"; under 48h,
+// plain hours. Does NOT change any value sent to the API.
+function fmtDuration(hours: number): string {
+  const h = Math.round(hours);
+  if (h < 48) return `${fmt(h)} sa`;
+  const days = Math.floor(h / 24);
+  const rem = h % 24;
+  const dayPart = rem > 0 ? `${days} gün ${rem} sa` : `${days} gün`;
+  return `${dayPart} (${fmt(h)} sa)`;
+}
+
 // Arrow pointing where the wind is blowing TOWARD (Open-Meteo gives the FROM
 // direction, so we add 180°). Used as a compact per-leg wind indicator.
 const WIND_ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
@@ -196,15 +208,15 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-b border-[var(--border)] last:border-b-0 py-2.5">
+    <div className="border-b border-[var(--border)] last:border-b-0 py-2">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between text-sm font-semibold text-[var(--text)]"
+        className="w-full flex items-center justify-between text-[13px] font-semibold text-[var(--text)]"
       >
         <span>{title}</span>
         <span className="text-[var(--muted)]">{open ? "−" : "+"}</span>
       </button>
-      {open && <div className="mt-2.5 space-y-2.5">{children}</div>}
+      {open && <div className="mt-2 space-y-2">{children}</div>}
     </div>
   );
 }
@@ -250,7 +262,7 @@ function MetricBar({
     ["EU ETS", ets, "EUR/tCO₂"],
   ];
   return (
-    <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--panel)] px-5 py-2 text-sm">
+    <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--panel)] px-5 py-1.5 text-sm">
       <span className="text-[10px] uppercase tracking-wide text-[var(--muted)] mr-2 shrink-0">
         Piyasa · referans
       </span>
@@ -582,8 +594,8 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* Top bar: PRUVA wordmark + tagline + honest DEMO pill. */}
-      <header className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-3 bg-[var(--panel)]">
-        <span className="text-xl font-extrabold tracking-wide text-[var(--accent)]">
+      <header className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-2 bg-[var(--panel)]">
+        <span className="text-lg font-extrabold tracking-wide text-[var(--accent)]">
           PRUVA
         </span>
         <span className="hidden sm:inline text-sm text-[var(--muted)]">
@@ -603,9 +615,9 @@ export default function Home() {
       />
 
       {/* Responsive 3-column layout: inputs | map | results. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_400px] gap-3 p-3">
-        {/* LEFT: inputs */}
-        <div className="pruva-card p-4 self-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_400px] gap-2 p-2">
+        {/* LEFT: inputs — scrolls internally so the page stays one screen tall. */}
+        <div className="pruva-card p-3 self-start lg:h-[calc(100vh-5.5rem)] lg:overflow-y-auto">
           <Section title="Rota">
             <PortCombobox
               label="Kalkış"
@@ -622,7 +634,7 @@ export default function Home() {
           <Section title="Sefer">
             <div>
               <label className="pruva-label">
-                Liman Varış Süresi: {berthEta} saat
+                Liman Varış Süresi: {fmtDuration(berthEta)}
               </label>
               <input
                 type="range"
@@ -635,7 +647,7 @@ export default function Home() {
               />
               {minTimeH !== null && (
                 <p className="text-xs text-[var(--muted)] mt-1">
-                  En erken varış: {fmt(minTimeH)} sa
+                  En erken varış: {fmtDuration(minTimeH)}
                 </p>
               )}
             </div>
@@ -870,7 +882,7 @@ export default function Home() {
         </div>
 
         {/* CENTER: the hero map — large, fills the viewport height on desktop. */}
-        <div className="lg:h-[calc(100vh-6rem)] min-h-[480px] flex flex-col gap-2">
+        <div className="lg:h-[calc(100vh-5.5rem)] min-h-[480px] flex flex-col gap-2">
           {/* Click-to-pick mode toggle: snap a map click to the nearest port. */}
           <div className="pruva-card p-2 flex items-center gap-2 text-sm">
             <span className="text-[var(--muted)]">Haritadan seç:</span>
@@ -911,8 +923,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* RIGHT: results */}
-        <div className="space-y-3 self-start">
+        {/* RIGHT: results — scrolls internally so the page stays one screen tall. */}
+        <div className="space-y-2.5 self-start lg:h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:pr-1">
           {/* Resting state before any result: skeletons while the first auto-run
               is loading, otherwise a compact "how it works" card. Keeps the
               right column from ever looking blank on first load. */}
@@ -962,7 +974,7 @@ export default function Home() {
             >
               <p className="text-sm font-medium">
                 ⚠ Bu varış süresi imkansız — gemi tam hızda bile yetişemez. En
-                erken varış: {fmt(result.min_time_h)} saat.
+                erken varış: {fmtDuration(result.min_time_h)}.
               </p>
               <button
                 onClick={() => handleOptimize(Math.ceil(result.min_time_h))}
@@ -998,26 +1010,26 @@ export default function Home() {
 
               {/* Headline: money saved. Never render a negative value as a big
                   teal hero — if there's no slack to slow down, show it muted. */}
-              <div className="pruva-card p-5">
+              <div className="pruva-card p-4">
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   Para Tasarrufu
                 </p>
                 {displayResult.money_saved_usd > 0 ? (
                   <>
-                    <p className="text-4xl font-extrabold text-[var(--accent)] mt-1">
+                    <p className="text-3xl font-extrabold text-[var(--accent)] mt-0.5">
                       ${fmt(displayResult.money_saved_usd)}
                     </p>
-                    <p className="text-sm text-[var(--muted)] mt-1">
+                    <p className="text-sm text-[var(--muted)] mt-0.5">
                       Yakıt tasarrufu %{displayResult.saving_pct.toFixed(1)} · CO₂{" "}
                       {fmt(displayResult.co2_saved_t)} t
                     </p>
                   </>
                 ) : (
                   <>
-                    <p className="text-2xl font-semibold text-[var(--muted)] mt-1">
+                    <p className="text-xl font-semibold text-[var(--muted)] mt-0.5">
                       ${fmt(displayResult.money_saved_usd)}
                     </p>
-                    <p className="text-sm text-[var(--muted)] mt-1">
+                    <p className="text-sm text-[var(--muted)] mt-0.5">
                       Bu ETA&apos;da yavaşlama payı yok — ETA&apos;yı artırın.
                     </p>
                   </>
@@ -1026,20 +1038,20 @@ export default function Home() {
 
               {/* CO₂ emission reduction — primary metric (peer of money saved).
                   The project goal is fuel saving AND emission reduction. */}
-              <div className="pruva-card p-5">
+              <div className="pruva-card p-4">
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   CO₂ Emisyon Azaltımı
                 </p>
                 {co2Saved > 0 ? (
                   <>
-                    <p className="text-4xl font-extrabold text-[var(--grade-a)] mt-1">
+                    <p className="text-3xl font-extrabold text-[var(--grade-a)] mt-0.5">
                       %{co2ReductionPct.toFixed(1)} azaltım
                     </p>
-                    <p className="text-sm text-[var(--muted)] mt-1">
+                    <p className="text-sm text-[var(--muted)] mt-0.5">
                       {fmt(co2Baseline)} t → {fmt(co2Optimized)} t CO₂ (−
                       {fmt(co2Saved)} t)
                     </p>
-                    <p className="text-xs text-[var(--muted)] mt-1">
+                    <p className="text-xs text-[var(--muted)] mt-0.5">
                       Hedef: ≥%{CO2_TARGET_PCT} — Ulaşılan: %
                       {co2ReductionPct.toFixed(1)}{" "}
                       {co2ReductionPct >= CO2_TARGET_PCT ? "✓" : ""}
@@ -1047,10 +1059,10 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    <p className="text-2xl font-semibold text-[var(--muted)] mt-1">
+                    <p className="text-xl font-semibold text-[var(--muted)] mt-0.5">
                       %{co2ReductionPct.toFixed(1)} azaltım
                     </p>
-                    <p className="text-sm text-[var(--muted)] mt-1">
+                    <p className="text-sm text-[var(--muted)] mt-0.5">
                       Bu ETA&apos;da emisyon azaltımı yok — ETA&apos;yı artırın.
                     </p>
                   </>
@@ -1069,7 +1081,7 @@ export default function Home() {
                   <p className="text-sm text-[var(--muted)] mt-0.5">
                     {originPort ? titleCase(originPort.name) : "Kalkış"} →{" "}
                     {destPort ? titleCase(destPort.name) : "Varış"} ·{" "}
-                    {fmt(displayResult.optimized.total_time_h)} sa
+                    {fmtDuration(displayResult.optimized.total_time_h)}
                   </p>
                 </div>
 
@@ -1122,8 +1134,8 @@ export default function Home() {
                   <Metric label="Mesafe" value={`${fmt(displayResult.distance_nm)} nm`} />
                   <Metric
                     label="Sefer Süresi"
-                    value={`${fmt(displayResult.optimized.total_time_h)} sa`}
-                    sub={`ETA hedefi ${fmt(berthEta)} sa`}
+                    value={fmtDuration(displayResult.optimized.total_time_h)}
+                    sub={`ETA hedefi ${fmtDuration(berthEta)}`}
                   />
                   <Metric
                     label="Tahmini Yakıt"

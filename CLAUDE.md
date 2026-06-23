@@ -494,3 +494,19 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - right panel order: Para Tasarrufu + CO₂ Azaltımı (heroes) -> Sefer Tahmini
         -> Regülasyon/CII -> charts -> alternatives.
       - npm run build OK. bundle 201kB.
+- [x] 3 visual fixes (display only, no logic/number/endpoint/formula change). build OK.
+      FIX1 fit-to-one-screen: header py-3->2 (text-lg), metric bar py-2->1.5,
+        grid p-3->2 gap-3->2, Section py-2.5->2 + title text-[13px], heroes p-5->4
+        text-4xl->3xl. LEFT + RIGHT columns now lg:h-[calc(100vh-5.5rem)] +
+        overflow-y-auto (scroll INTERNALLY) so page never grows tall; map stays
+        hero; 3-col desktop / stacked mobile.
+      FIX2 day-based durations: fmtDuration(h) helper — h>=48 -> "X gün Y sa
+        (Z sa)", else "Z sa". applied to ETA slider label, En erken varış, infeasible
+        warning, Sefer Süresi metric + ETA hedefi, route header time. slider/API
+        still operate in HOURS — only the LABEL adds days.
+      FIX3 smoother map (RouteMap.tsx + globals.css): zone polygons smoothFactor 3,
+        rounded joins, softer fills (ECA teal 0.14 / HRA red 0.13 dashed "6 6"),
+        1.8px brighter strokes. route: white casing weight9 op.45 + teal weight5,
+        round lineCap/lineJoin, subtle .pruva-route-glow drop-shadow (route only,
+        not zones). storm-leg red kept. CARTO dark + OpenSeaMap + layer control
+        intact. npm run build OK. bundle 201kB.
