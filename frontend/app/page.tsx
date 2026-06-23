@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import SpeedProfileChart from "./components/SpeedProfileChart";
 import FuelCompareChart from "./components/FuelCompareChart";
@@ -86,7 +86,7 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-b border-[var(--border)] last:border-b-0 py-3">
+    <div className="border-b border-[var(--border)] last:border-b-0 py-2.5">
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between text-sm font-semibold text-[var(--text)]"
@@ -94,7 +94,7 @@ function Section({
         <span>{title}</span>
         <span className="text-[var(--muted)]">{open ? "−" : "+"}</span>
       </button>
-      {open && <div className="mt-3 space-y-3">{children}</div>}
+      {open && <div className="mt-2.5 space-y-2.5">{children}</div>}
     </div>
   );
 }
@@ -132,6 +132,11 @@ export default function Home() {
   // Click-to-pick mode: clicking the map snaps the chosen endpoint to the
   // nearest named port. "off" disables map clicks (default).
   const [pickMode, setPickMode] = useState<"off" | "origin" | "dest">("off");
+
+  // Fire one automatic optimize on first load (once both default ports +
+  // route_info have resolved) so the map and results are never empty. This ref
+  // guards it so it never re-runs when the user later changes ports.
+  const didAutoRun = useRef(false);
 
   // Snap a clicked map point to the nearest named port (GET /ports/nearest) and
   // set it as the active endpoint (Kalkış or Varış).
@@ -202,6 +207,12 @@ export default function Home() {
           setEtaMin(Math.ceil(info.min_time_h));
           setEtaMax(Math.round(info.baseline_time_h * 2));
           setBerthEta(info.suggested_eta_h);
+          // First load only: auto-optimize with the just-computed ETA so the
+          // map draws a route and the right panel shows results immediately.
+          if (!didAutoRun.current) {
+            didAutoRun.current = true;
+            handleOptimize(info.suggested_eta_h);
+          }
         }
       )
       .catch(() => {
@@ -289,7 +300,7 @@ export default function Home() {
       </header>
 
       {/* Responsive 3-column layout: inputs | map | results. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_400px] gap-4 p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_400px] gap-3 p-3">
         {/* LEFT: inputs */}
         <div className="pruva-card p-4 self-start">
           <Section title="Rota">
@@ -363,7 +374,7 @@ export default function Home() {
             </div>
           </Section>
 
-          <Section title="Hava">
+          <Section title="Hava" defaultOpen={false}>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -424,7 +435,7 @@ export default function Home() {
             )}
           </Section>
 
-          <Section title="Ekonomi">
+          <Section title="Ekonomi" defaultOpen={false}>
             <div>
               <label className="pruva-label">Yakıt Tipi</label>
               <select
@@ -483,7 +494,7 @@ export default function Home() {
           <button
             onClick={() => handleOptimize()}
             disabled={loading}
-            className="mt-4 w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] text-[#04201c] font-semibold px-4 py-2.5 hover:opacity-90 disabled:opacity-50"
+            className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] text-[#04201c] font-semibold px-4 py-2.5 hover:opacity-90 disabled:opacity-50"
           >
             {loading && (
               <span className="inline-block w-4 h-4 border-2 border-[#04201c] border-t-transparent rounded-full animate-spin" />
@@ -536,12 +547,40 @@ export default function Home() {
         </div>
 
         {/* RIGHT: results */}
-        <div className="space-y-4 self-start">
-          {!result && (
-            <div className="pruva-card p-6 text-sm text-[var(--muted)]">
-              Sonuçları görmek için sefer ayarlarını yapıp{" "}
-              <span className="text-[var(--accent)] font-semibold">Optimize Et</span>{" "}
-              düğmesine basın.
+        <div className="space-y-3 self-start">
+          {/* Resting state before any result: skeletons while the first auto-run
+              is loading, otherwise a compact "how it works" card. Keeps the
+              right column from ever looking blank on first load. */}
+          {!result && loading && (
+            <div className="space-y-4 animate-pulse">
+              <div className="pruva-card p-5">
+                <div className="h-3 w-24 rounded bg-[var(--border)]" />
+                <div className="mt-3 h-9 w-40 rounded bg-[var(--border)]" />
+                <div className="mt-2 h-3 w-48 rounded bg-[var(--border)]" />
+              </div>
+              <div className="pruva-card p-4 space-y-2">
+                <div className="h-3 w-28 rounded bg-[var(--border)]" />
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-3 w-full rounded bg-[var(--border)]" />
+                ))}
+              </div>
+              <div className="pruva-card h-28" />
+            </div>
+          )}
+
+          {!result && !loading && (
+            <div className="pruva-card p-5 text-sm">
+              <h2 className="font-semibold mb-2">Nasıl çalışır</h2>
+              <ol className="space-y-1.5 text-[var(--muted)] list-decimal list-inside">
+                <li>Kalkış ve varış limanını seçin (veya haritadan tıklayın).</li>
+                <li>Gerçek deniz rotası çizilir, canlı hava ile bacaklara bölünür.</li>
+                <li>Hız profili optimize edilir; yakıt, CO₂, maliyet ve CII notu hesaplanır.</li>
+              </ol>
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                İstanbul → Singapur ile başlıyoruz. Ayarları değiştirip{" "}
+                <span className="text-[var(--accent)] font-semibold">Optimize Et</span>{" "}
+                ile yeniden hesaplayın.
+              </p>
             </div>
           )}
 

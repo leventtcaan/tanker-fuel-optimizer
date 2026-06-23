@@ -330,3 +330,18 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       - RouteMap.tsx: MapClickPicker via useMapEvents 'click' -> onMapPick;
         crosshair cursor while active. new optional props pickMode/onMapPick.
       - npm run build OK. bundle 198kB.
+- [x] Phase E — composition pass (layout/initial-load UX ONLY). DONE. build OK.
+      NO logic touched (optimizer/CII/economics/weather/routing/API unchanged).
+      page.tsx only:
+      - FIRST-LOAD AUTO-OPTIMIZE: didAutoRun useRef guard. on first successful
+        /route_info (default İstanbul->Singapore) auto-call handleOptimize(
+        suggested_eta) ONCE -> map draws route + right panel filled on load.
+        ref guard => never re-runs when user later changes ports.
+      - RIGHT PANEL resting state: skeletons (animate-pulse) while initial
+        loading (!result && loading); compact "Nasıl çalışır" 3-step mini-card
+        otherwise. never blank.
+      - LEFT PANEL shorter: Hava + Ekonomi Sections defaultOpen={false} (start
+        collapsed); Rota + Sefer stay open (essentials).
+      - BALANCE: tighter spacing — Section py-3->2.5 mt/space-y-3->2.5, grid
+        gap/p-4->3, right col space-y-4->3, button mt-4->3. fits ~900px laptop.
+      - still 3-col desktop / stacked mobile. npm run build OK. bundle 198kB.
