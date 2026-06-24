@@ -232,6 +232,79 @@ def test_alternatives():
     print("Alternatives assertions passed.")
 
 
+def test_per_leg_and_segmentation():
+    """Phase F6: per-leg fuel breakdown + distance-based leg count.
+
+    Asserts (1) the leg count scales with route distance (a long crossing gets
+    more legs than a short hop, both clamped to 3..12), (2) /optimize returns a
+    per_leg array of length num_legs, and (3) the per-leg optimized fuel sums to
+    the voyage total (consistency — same engine, no double counting).
+    """
+    ist = client.get("/ports/search", params={"q": "istanbul"}).json()[0]
+    sing = client.get("/ports/search", params={"q": "singapore"}).json()[0]
+    izmir = client.get("/ports/search", params={"q": "izmir"}).json()[0]
+
+    # Distance-based leg count: short İzmir->İstanbul hop vs long İst->Singapore.
+    short_info = client.get(
+        "/route_info", params={"origin": _latlon(izmir), "dest": _latlon(ist)}
+    ).json()
+    long_info = client.get(
+        "/route_info", params={"origin": _latlon(ist), "dest": _latlon(sing)}
+    ).json()
+    assert 3 <= short_info["num_legs"] <= 12, short_info
+    assert 3 <= long_info["num_legs"] <= 12, long_info
+    assert long_info["num_legs"] > short_info["num_legs"], (long_info, short_info)
+    # The short hop should bottom out at the floor; the long crossing near the cap.
+    assert short_info["num_legs"] == 3, short_info
+    assert long_info["num_legs"] >= 8, long_info
+
+    # An explicit num_legs override still wins over the distance-based default.
+    forced = client.get(
+        "/route_info",
+        params={"origin": _latlon(ist), "dest": _latlon(sing), "num_legs": 5},
+    ).json()
+    assert forced["num_legs"] == 5, forced
+
+    # /optimize: per_leg present, length == num_legs, fuel sums to the total.
+    payload = {
+        "origin": _latlon(ist),
+        "dest": _latlon(sing),
+        "dwt": 40000,
+        "service_speed": 14.0,
+        "berth_eta_h": long_info["suggested_eta_h"],
+        "year": 2026,
+        "auto_weather": False,  # deterministic (no live API in the test)
+    }
+    data = client.post("/optimize", json=payload).json()
+    per_leg = data["per_leg"]
+    assert per_leg is not None, data
+    assert data["num_legs"] == long_info["num_legs"], (data["num_legs"], long_info)
+    assert len(per_leg) == data["num_legs"], (len(per_leg), data["num_legs"])
+
+    # Leg indices are 0..n-1 in order; speeds sit within the optimizer bounds.
+    assert [p["leg_index"] for p in per_leg] == list(range(len(per_leg))), per_leg
+    assert all(10.0 <= p["speed_kn"] <= 16.0 for p in per_leg), per_leg
+
+    # Per-leg fuel sums (and distance sums) match the voyage totals (rounding only).
+    sum_opt = sum(p["fuel_t"] for p in per_leg)
+    sum_base = sum(p["baseline_fuel_t"] for p in per_leg)
+    sum_dist = sum(p["distance_nm"] for p in per_leg)
+    assert abs(sum_opt - data["optimized"]["fuel_t"]) < 1.0, (sum_opt, data["optimized"]["fuel_t"])
+    assert abs(sum_base - data["baseline"]["fuel_t"]) < 1.0, (sum_base, data["baseline"]["fuel_t"])
+    assert abs(sum_dist - data["distance_nm"]) < 1.0, (sum_dist, data["distance_nm"])
+
+    print("\n=== Per-leg fuel + distance-based segmentation ===")
+    print(f"  İzmir->İstanbul  : {short_info['distance_nm']:6.0f} nm -> {short_info['num_legs']} legs")
+    print(f"  İstanbul->Singapore: {long_info['distance_nm']:6.0f} nm -> {long_info['num_legs']} legs")
+    print(f"  per_leg fuel sum  : {sum_opt:.1f} t  (voyage total {data['optimized']['fuel_t']:.1f} t)")
+    for p in per_leg[:3]:
+        print(
+            f"  leg {p['leg_index']}: {p['distance_nm']:.0f} nm @ {p['speed_kn']:.2f} kn "
+            f"-> {p['fuel_t']:.1f} t  (wave {p['wave_m']} m, SOG {p['sog_kn']} kn)"
+        )
+    print("Per-leg / segmentation assertions passed.")
+
+
 def _weather_payload(auto_weather):
     izmir = client.get("/ports/search", params={"q": "izmir"}).json()[0]
     sing = client.get("/ports/search", params={"q": "singapore"}).json()[0]
@@ -303,6 +376,7 @@ if __name__ == "__main__":
     test_nearest_port()
     test_real_routing()
     test_infeasible_eta()
+    test_per_leg_and_segmentation()
     test_alternatives()
     test_auto_weather()
     test_weather_fallback()

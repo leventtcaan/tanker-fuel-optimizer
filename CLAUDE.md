@@ -549,3 +549,41 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         only; route paths keep crisp edges, stay ON TOP — declared after zones).
       - tooltips on hover + layer toggles (ECA/HRA/OpenSeaMap) unchanged. basemap
         + panels untouched. npm run build OK. bundle 202kB.
+- [x] Phase F6 — re-optimize on input change + per-leg fuel + distance-based legs.
+      DONE. backend test green, build OK. browser ext NOT connected -> verified
+      headless via curl (project's established method).
+      RE-OPTIMIZE BUG: changing voyage inputs (ETA/speed/DWT/draft/drydock/load/
+        weather mode/fuel/year/ports) left fuel/CII/cost STALE. ROOT CAUSE = nothing
+        re-ran /optimize on change: only a once-guarded auto-run on first load +
+        the manual button. The button itself read current state fine, but ports
+        changing updated ETA bounds while the shown result stayed stale until a
+        click; no effect watched the other inputs at all.
+        FIX (page.tsx): didAutoRun ref still fires the first auto-run ONCE. Added a
+        debounced (600ms) re-optimize effect keyed on an optSig signature of every
+        input that changes output. lastOptSig ref records what was last optimized;
+        effect fires only on a REAL change and never loops on its own state
+        updates (result/loading/alts not in sig; berthEta only set on override).
+        Weather excluded from sig when auto_weather ON (server replaces it;
+        read-only sliders + slider-resize must not trigger). Button still always
+        re-runs current state; first-load auto-run preserved. no infinite loop.
+      PER-LEG FUEL (backend-first): schemas +PerLegOut; OptimizeResponse +num_legs
+        +per_leg [{leg_index,distance_nm,speed_kn,fuel_t,baseline_fuel_t,
+        weather_factor,beaufort,wave_m,current_kn,sog_kn}]. main.py builds per_leg
+        reusing voyage.leg_fuel/leg_sog (NO new physics). per_leg fuel sum ==
+        voyage total (verified 629.8 t == 629.8 t). frontend: new collapsible
+        "Bacak Bazında Yakıt" table (right panel) showing each leg's fuel + speed +
+        wave/Bft, storm legs dotted red.
+      DISTANCE-BASED LEGS: routing.legs_for_distance (~1 leg/500nm, clamp 3..12) +
+        polyline_distance_nm. schemas num_legs Optional (None=computed; explicit
+        still overrides). main /optimize + /route_info + /alternatives (per
+        candidate) resolve n_legs from route distance. /route_info returns num_legs.
+        VERIFIED: İzmir->İstanbul 278nm=3 legs, İst->Singapore 5861nm=12; forced
+        num_legs=5 respected. frontend stops sending num_legs (backend computes),
+        reads num_legs from /route_info to size weather sliders.
+      LEG-BOUNDARY DOTS (RouteMap.tsx): CircleMarker at each leg boundary (same
+        chunk math as backend) with tooltip "Bacak N: X kn · Y t · dalga Z m";
+        navy dot, storm-leg-start red. perLeg prop drives count+tooltips (falls
+        back to legs_weather for alt routes).
+      test_api.py +test_per_leg_and_segmentation (per_leg len==num_legs, fuel/dist
+        sums match totals, leg count scales long>short + clamps, override wins).
+        ALL backend tests green. npm run build OK. bundle 202kB.

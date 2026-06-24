@@ -69,6 +69,41 @@ def get_sea_route(origin_latlon, dest_latlon, restrictions=None):
     return {"coords_latlon": coords_latlon, "distance_nm": distance_nm}
 
 
+def polyline_distance_nm(coords_latlon):
+    """Total great-circle length of a [lat, lon] polyline, in nautical miles."""
+    return sum(
+        _haversine_nm(
+            coords_latlon[i][0],
+            coords_latlon[i][1],
+            coords_latlon[i + 1][0],
+            coords_latlon[i + 1][1],
+        )
+        for i in range(len(coords_latlon) - 1)
+    )
+
+
+def legs_for_distance(distance_nm, per_leg_nm=500.0, min_legs=3, max_legs=12):
+    """Choose how many legs to split a route into, scaled by its length.
+
+    A long ocean crossing deserves more legs than a short coastal hop: more legs
+    means finer weather/current sampling and a smoother optimized speed profile.
+    We aim for roughly one leg per `per_leg_nm` nautical miles (~500 nm), clamped
+    to a sane [min_legs, max_legs] band so very short routes still get a few legs
+    and very long ones do not explode into dozens.
+
+    Args:
+        distance_nm: total route distance, in nautical miles.
+        per_leg_nm: target distance covered by each leg, in nautical miles.
+        min_legs: floor on the number of legs (short routes).
+        max_legs: cap on the number of legs (long routes).
+
+    Returns:
+        Number of legs (int) in [min_legs, max_legs].
+    """
+    n = round(distance_nm / per_leg_nm)
+    return max(min_legs, min(max_legs, int(n)))
+
+
 def resample_to_legs(
     coords_latlon,
     k=6,

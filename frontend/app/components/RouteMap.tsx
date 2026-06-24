@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  CircleMarker,
   LayerGroup,
   LayersControl,
   MapContainer,
@@ -21,6 +22,14 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 
 type LatLon = [number, number];
 type LegWeather = { factor: number; wave_m: number | null; source: string };
+// Per-leg optimized breakdown (from /optimize per_leg) for the boundary tooltips.
+type PerLeg = {
+  leg_index: number;
+  speed_kn: number;
+  fuel_t: number;
+  wave_m: number;
+  weather_factor: number;
+};
 
 // GeoJSON feature as served by GET /zones (coordinates are [lon, lat]).
 type ZoneFeature = {
@@ -35,6 +44,7 @@ type Props = {
   originName?: string;
   destName?: string;
   legsWeather?: LegWeather[] | null;
+  perLeg?: PerLeg[] | null;
   pickMode?: PickMode;
   onMapPick?: (lat: number, lon: number) => void;
   // When an alternative route is selected, its distinct colour for the line
@@ -120,6 +130,7 @@ export default function RouteMap({
   originName,
   destName,
   legsWeather,
+  perLeg,
   pickMode = "off",
   onMapPick,
   routeColor = ROUTE_NAVY,
@@ -144,9 +155,27 @@ export default function RouteMap({
   const ring = (z: ZoneFeature): LatLon[] =>
     z.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
 
-  // Colored leg segments (red where the live weather factor is stormy).
-  const k = legsWeather?.length ?? 0;
+  // Colored leg segments (red where the live weather factor is stormy). The leg
+  // count comes from per_leg when present, else from the live weather array.
+  const k = perLeg?.length ?? legsWeather?.length ?? 0;
   const chunks = hasRoute && k > 0 ? legChunks(routeCoords, k) : [];
+
+  // Leg-boundary points: the waypoint where one leg ends and the next begins,
+  // using the SAME chunk math as the backend resampling. A subtle dot at each
+  // boundary makes the legs visible as points along the route, with a tooltip
+  // describing the leg that starts there (speed / fuel / wave).
+  const nSeg = routeCoords.length - 1;
+  const boundaryDots =
+    hasRoute && k > 1
+      ? Array.from({ length: k - 1 }, (_, i) => {
+          const b = i + 1; // 0-based index of the leg that starts at this point
+          const idx = Math.floor((b * nSeg) / k);
+          const leg = perLeg?.[b] ?? null;
+          const factor =
+            leg?.weather_factor ?? legsWeather?.[b]?.factor ?? 1.0;
+          return { pos: routeCoords[idx], leg, legNo: b + 1, storm: factor > STORM_FACTOR };
+        })
+      : [];
 
   return (
     <div className="pruva-card overflow-hidden h-full min-h-[460px]">
@@ -272,6 +301,29 @@ export default function RouteMap({
                 }}
               />
             )}
+
+            {/* Subtle leg-boundary dots with per-leg tooltips. */}
+            {boundaryDots.map((d, i) => (
+              <CircleMarker
+                key={`leg-${i}`}
+                center={d.pos}
+                radius={3.5}
+                pathOptions={{
+                  color: CASING,
+                  weight: 1.5,
+                  fillColor: d.storm ? ROUTE_STORM : routeColor,
+                  fillOpacity: 1,
+                }}
+              >
+                <Tooltip>
+                  {d.leg
+                    ? `Bacak ${d.legNo}: ${d.leg.speed_kn.toFixed(1)} kn · ${d.leg.fuel_t.toFixed(
+                        1
+                      )} t · dalga ${d.leg.wave_m.toFixed(1)} m`
+                    : `Bacak ${d.legNo} başlangıcı`}
+                </Tooltip>
+              </CircleMarker>
+            ))}
 
             {origin && (
               <Marker position={origin} icon={ORIGIN_ICON}>

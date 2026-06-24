@@ -52,7 +52,12 @@ class OptimizeRequest(BaseModel):
     # the backend builds a real ocean route and resamples it into num_legs legs.
     origin: str | None = Field(None, description="Origin port name (see /ports).")
     dest: str | None = Field(None, description="Destination port name (see /ports).")
-    num_legs: int = Field(6, gt=0, description="How many legs to resample the route into.")
+    num_legs: int | None = Field(
+        None,
+        gt=0,
+        description="Legs to resample the route into. None = distance-based default "
+        "(~1 leg per 500 nm, clamped to 3..12). An explicit value overrides it.",
+    )
     weather: list[float] | None = Field(
         None, description="Optional per-leg weather factors (used when auto_weather is off)."
     )
@@ -71,6 +76,30 @@ class OptimizeRequest(BaseModel):
     eu_scope_fraction: float = Field(
         0.0, description="Share of voyage CO2 inside EU ETS scope (0..1)."
     )
+
+
+class PerLegOut(BaseModel):
+    """One leg's optimized result, broken out so the UI can show per-leg fuel.
+
+    Reuses the engine's existing per-leg computations (`voyage.leg_fuel`,
+    `voyage.leg_sog`); no new physics. Lets the frontend show each leg's FUEL
+    alongside its weather/Beaufort/wave/current/SOG and draw leg boundaries.
+    """
+
+    leg_index: int = Field(..., description="0-based leg position along the route.")
+    distance_nm: float = Field(..., description="Leg distance, in nautical miles.")
+    speed_kn: float = Field(..., description="Optimized speed through water, in knots.")
+    fuel_t: float = Field(..., description="Optimized fuel burned on this leg, in tons.")
+    baseline_fuel_t: float = Field(
+        ..., description="Constant-service-speed fuel for this leg, in tons."
+    )
+    weather_factor: float = Field(..., description="Per-leg weather factor (1.0 calm).")
+    beaufort: float = Field(0.0, description="Beaufort wind force on this leg (0 calm).")
+    wave_m: float = Field(0.0, description="Significant wave height used (Hs), in metres.")
+    current_kn: float = Field(
+        0.0, description="Along-track current, in knots (+ following, - head)."
+    )
+    sog_kn: float = Field(..., description="Optimized speed over ground, in knots.")
 
 
 class ScenarioOut(BaseModel):
@@ -102,6 +131,12 @@ class OptimizeResponse(BaseModel):
     co2_saved_t: float = Field(..., description="CO2 saved, in metric tons.")
     money_saved_usd: float = Field(..., description="Fuel cost saved, in USD.")
     distance_nm: float = Field(..., description="Total voyage distance, in nm.")
+    num_legs: int = Field(
+        0, description="Number of legs the route was resampled into (per_leg length)."
+    )
+    per_leg: list[PerLegOut] | None = Field(
+        None, description="Per-leg optimized breakdown (fuel, speed, weather, SOG)."
+    )
     route_coords: list[list[float]] | None = Field(
         None, description="[lat, lon] points of the real sea lane; None for legacy legs."
     )

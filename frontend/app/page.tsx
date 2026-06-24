@@ -28,6 +28,21 @@ type ScenarioOut = {
 
 type EcaZone = { name: string; bbox: number[] };
 
+// One leg's optimized breakdown (POST /optimize -> per_leg). Carries the FUEL
+// the rest of the engine already computed, plus the conditions on that leg.
+type PerLeg = {
+  leg_index: number;
+  distance_nm: number;
+  speed_kn: number;
+  fuel_t: number;
+  baseline_fuel_t: number;
+  weather_factor: number;
+  beaufort: number;
+  wave_m: number;
+  current_kn: number;
+  sog_kn: number;
+};
+
 type OptimizeResponse = {
   baseline: ScenarioOut;
   optimized: ScenarioOut;
@@ -35,6 +50,8 @@ type OptimizeResponse = {
   co2_saved_t: number;
   money_saved_usd: number;
   distance_nm: number;
+  num_legs: number;
+  per_leg: PerLeg[] | null;
   route_coords: number[][] | null;
   eca_zones: EcaZone[] | null;
   feasible: boolean;
@@ -88,7 +105,9 @@ type LegWeather = {
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-// The route is resampled into this many legs server-side.
+// Initial leg count before a route loads. The real count is distance-based and
+// comes back from /route_info (~1 leg per 500 nm, clamped 3..12); we no longer
+// force a fixed count on the backend, so long voyages get finer segmentation.
 const NUM_LEGS = 6;
 
 // Defaults. The ETA below is only a placeholder until /route_info loads (once
@@ -295,6 +314,8 @@ export default function Home() {
   const [etaMin, setEtaMin] = useState(50);
   const [etaMax, setEtaMax] = useState(800);
   const [minTimeH, setMinTimeH] = useState<number | null>(null);
+  // Distance-based leg count (from /route_info); sizes the weather sliders.
+  const [numLegs, setNumLegs] = useState(NUM_LEGS);
   const [dwt, setDwt] = useState(DEFAULT_DWT);
   const [serviceSpeed, setServiceSpeed] = useState(DEFAULT_SERVICE_SPEED);
   const [year, setYear] = useState(DEFAULT_YEAR);
@@ -331,6 +352,10 @@ export default function Home() {
   // route_info have resolved) so the map and results are never empty. This ref
   // guards it so it never re-runs when the user later changes ports.
   const didAutoRun = useRef(false);
+  // Signature of the inputs that were last sent to /optimize. The debounced
+  // re-optimize effect compares the current signature against this so it only
+  // re-runs when something actually changed (and never loops on its own output).
+  const lastOptSig = useRef<string | null>(null);
 
   // Snap a clicked map point to the nearest named port (GET /ports/nearest) and
   // set it as the active endpoint (Kalkış or Varış).
@@ -386,7 +411,7 @@ export default function Home() {
     if (!originRef || !destRef) return;
     const url = `${API}/route_info?origin=${encodeURIComponent(
       originRef
-    )}&dest=${encodeURIComponent(destRef)}&num_legs=${NUM_LEGS}`;
+    )}&dest=${encodeURIComponent(destRef)}`;
     fetch(url)
       .then((r) => r.json())
       .then(
@@ -394,6 +419,7 @@ export default function Home() {
           min_time_h: number;
           baseline_time_h: number;
           suggested_eta_h: number;
+          num_legs: number;
         }) => {
           setMinTimeH(info.min_time_h);
           // Floor at the earliest feasible arrival so an infeasible ETA can't be
@@ -401,8 +427,16 @@ export default function Home() {
           setEtaMin(Math.ceil(info.min_time_h));
           setEtaMax(Math.round(info.baseline_time_h * 2));
           setBerthEta(info.suggested_eta_h);
+          // Resize the manual weather sliders to the route's leg count (so they
+          // line up with how the backend will segment this route).
+          setNumLegs(info.num_legs);
+          setWeather((prev) =>
+            Array.from({ length: info.num_legs }, (_, i) => prev[i] ?? 1.0)
+          );
           // First load only: auto-optimize with the just-computed ETA so the
           // map draws a route and the right panel shows results immediately.
+          // Subsequent input changes re-optimize via the debounced effect below;
+          // this guard keeps the first run from firing more than once.
           if (!didAutoRun.current) {
             didAutoRun.current = true;
             handleOptimize(info.suggested_eta_h);
@@ -412,6 +446,7 @@ export default function Home() {
       .catch(() => {
         /* keep current ETA bounds on failure */
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [originRef, destRef]);
 
   // Edit the price of the currently-selected fuel type.
@@ -430,12 +465,12 @@ export default function Home() {
     setWeather((prev) => prev.map((w, i) => (i === index ? value : w)));
   }
 
-  // Shared request body for /optimize and /alternatives.
+  // Shared request body for /optimize and /alternatives. num_legs is omitted on
+  // purpose so the backend picks a distance-based count (matching /route_info).
   function buildPayload(eta: number) {
     return {
       origin: originRef,
       dest: destRef,
-      num_legs: NUM_LEGS,
       weather,
       dwt,
       service_speed: serviceSpeed,
@@ -450,6 +485,30 @@ export default function Home() {
       days_since_drydock: daysSinceDrydock,
       load,
     };
+  }
+
+  // Signature of every input that changes the /optimize result, used by the
+  // debounced auto re-optimize below. Weather is only included when MANUAL: with
+  // auto-weather ON the server replaces it from live data, and the read-only
+  // sliders (and the slider resize on route change) shouldn't trigger a re-run.
+  function optSigFor(eta: number) {
+    return JSON.stringify({
+      eta,
+      originRef,
+      destRef,
+      dwt,
+      serviceSpeed,
+      year,
+      draftDm,
+      daysSinceDrydock,
+      load,
+      autoWeather,
+      fuelType,
+      fuelPrices,
+      etsPrice,
+      euScopeFraction,
+      weather: autoWeather ? null : weather,
+    });
   }
 
   // Fetch + score the candidate routes (runs after the main result is shown).
@@ -477,6 +536,9 @@ export default function Home() {
     }
     const eta = etaOverride ?? berthEta;
     if (etaOverride !== undefined) setBerthEta(etaOverride);
+    // Record what we're optimizing for so the debounced effect won't re-fire on
+    // this same input set (and never loops on its own state updates).
+    lastOptSig.current = optSigFor(eta);
     setLoading(true);
     setError(null);
     // A fresh optimize invalidates the previous candidate comparison/selection.
@@ -501,6 +563,20 @@ export default function Home() {
       setLoading(false);
     }
   }
+
+  // Debounced auto re-optimize: after the first load, any change to a voyage
+  // input (ETA, speed, DWT, draft, drydock, load, weather mode, fuel/year, or
+  // ports) re-runs /optimize with the CURRENT form state. The signature compare
+  // means it fires only on a real change and never loops on its own output.
+  const optSig = optSigFor(berthEta);
+  useEffect(() => {
+    if (!didAutoRun.current) return; // first run is handled on route load
+    if (!originRef || !destRef) return;
+    if (optSig === lastOptSig.current) return; // nothing actually changed
+    const t = setTimeout(() => handleOptimize(), 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [optSig]);
 
   // Turn a selected candidate into the OptimizeResponse shape the result cards
   // expect, so clicking a candidate loads its metrics into the existing cards.
@@ -546,6 +622,10 @@ export default function Home() {
       co2_saved_t: c.co2_saved_t,
       money_saved_usd: c.money_saved_usd,
       distance_nm: c.distance_nm,
+      // Candidates don't carry a per-leg fuel breakdown; the map still draws leg
+      // boundaries from legs_weather chunks, just without per-leg fuel tooltips.
+      num_legs: c.legs_weather?.length ?? 0,
+      per_leg: null,
       route_coords: c.route_coords,
       eca_zones: result?.eca_zones ?? null,
       feasible: c.feasible,
@@ -739,7 +819,7 @@ export default function Home() {
             </label>
 
             <label className="pruva-label">
-              Bacak Bazında Hava (1.0 sakin → 1.6 fırtına)
+              Bacak Bazında Hava · {numLegs} bacak (1.0 sakin → 1.6 fırtına)
             </label>
             {weather.map((w, i) => {
               const lw = autoWeather ? result?.legs_weather?.[i] : undefined;
@@ -916,6 +996,7 @@ export default function Home() {
               originName={originPort ? titleCase(originPort.name) : undefined}
               destName={destPort ? titleCase(destPort.name) : undefined}
               legsWeather={displayResult?.legs_weather ?? null}
+              perLeg={displayResult?.per_leg ?? null}
               pickMode={pickMode}
               onMapPick={handleMapPick}
               routeColor={selectedAlt ? altColor(selectedAlt.id) : undefined}
@@ -1205,6 +1286,65 @@ export default function Home() {
                 optimizedFuel={displayResult.optimized.fuel_t}
                 savingPct={displayResult.saving_pct}
               />
+
+              {/* Per-leg FUEL breakdown (from /optimize per_leg) — each leg's
+                  optimized fuel alongside its conditions. Collapsible to keep the
+                  panel compact; scrolls when a long voyage has many legs. */}
+              {displayResult.per_leg && displayResult.per_leg.length > 0 && (
+                <div className="pruva-card p-3">
+                  <Section title={`Bacak Bazında Yakıt (${displayResult.per_leg.length} bacak)`} defaultOpen={false}>
+                    <div className="max-h-56 overflow-y-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="text-[10px] uppercase tracking-wide text-[var(--muted)] text-right">
+                            <th className="text-left font-medium py-1">Bacak</th>
+                            <th className="font-medium">nm</th>
+                            <th className="font-medium">kn</th>
+                            <th className="font-medium">Yakıt t</th>
+                            <th className="font-medium">Dalga</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayResult.per_leg.map((p) => {
+                            const storm = p.weather_factor > 1.2;
+                            return (
+                              <tr
+                                key={p.leg_index}
+                                className="text-right border-t border-[var(--border)]"
+                              >
+                                <td className="text-left py-1 flex items-center gap-1.5">
+                                  <span
+                                    className="inline-block w-2 h-2 rounded-full"
+                                    style={{
+                                      backgroundColor: storm
+                                        ? "var(--grade-e)"
+                                        : "var(--accent)",
+                                    }}
+                                  />
+                                  {p.leg_index + 1}
+                                </td>
+                                <td>{fmt(p.distance_nm)}</td>
+                                <td>{p.speed_kn.toFixed(1)}</td>
+                                <td className="font-semibold text-[var(--accent)]">
+                                  {p.fuel_t.toFixed(1)}
+                                </td>
+                                <td className={storm ? "text-[var(--grade-e)]" : ""}>
+                                  {p.wave_m.toFixed(1)} m
+                                  {p.beaufort > 0 && ` · Bft ${p.beaufort.toFixed(0)}`}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      <p className="text-[10px] text-[var(--muted)] mt-1.5">
+                        Kırmızı nokta = fırtınalı bacak. Yakıt değerleri optimize
+                        edilmiş hız profilinden; toplam {fmt(displayResult.optimized.fuel_t)} t.
+                      </p>
+                    </div>
+                  </Section>
+                </div>
+              )}
 
               {/* Rota Alternatifleri — compare candidates and pick one. */}
               {(altLoading || (alternatives && alternatives.length > 1)) && (

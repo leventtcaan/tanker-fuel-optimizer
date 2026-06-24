@@ -13,16 +13,25 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from voyage import (
     Leg,
+    leg_fuel,
     leg_time,
     leg_sog,
     relative_wind_deg,
     wind_angle_rad_from,
     current_along_kn,
+    weather_factor_to_wave_m,
 )
 from optimizer import baseline_voyage, optimize_speed_profile
 from cii import rate_voyage, CF
 from ports import curated_ports, search_ports, resolve_latlon, nearest_port
-from routing import get_sea_route, resample_to_legs, leg_midpoints, leg_bearings
+from routing import (
+    get_sea_route,
+    resample_to_legs,
+    leg_midpoints,
+    leg_bearings,
+    legs_for_distance,
+    polyline_distance_nm,
+)
 from weather import fetch_leg_weather
 from economics import (
     fuel_cost_usd,
@@ -38,7 +47,7 @@ from alt_routes import (
     weather_current_route,
     worst_leg_index,
 )
-from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut
+from schemas import OptimizeRequest, OptimizeResponse, ScenarioOut, PerLegOut
 
 app = FastAPI(title="Tanker Fuel Optimizer API")
 
@@ -106,7 +115,7 @@ def reference_prices():
 
 
 @app.get("/route_info")
-def route_info(origin: str, dest: str, num_legs: int = 6):
+def route_info(origin: str, dest: str, num_legs: int | None = None):
     """Timing facts for a route, so the frontend can default the ETA sensibly.
 
     Returns the route distance plus three reference times:
@@ -127,7 +136,10 @@ def route_info(origin: str, dest: str, num_legs: int = 6):
         raise HTTPException(status_code=400, detail=f"Unknown dest: {dest}")
 
     route = get_sea_route(origin_ll, dest_ll)
-    legs = resample_to_legs(route["coords_latlon"], num_legs)
+    # Distance-based leg count unless the caller forces one (so the frontend can
+    # size its weather sliders + leg markers to the same count the optimizer uses).
+    n_legs = num_legs or legs_for_distance(route["distance_nm"])
+    legs = resample_to_legs(route["coords_latlon"], n_legs)
 
     vmax = 16.0
     service_speed = 14.0
@@ -137,6 +149,7 @@ def route_info(origin: str, dest: str, num_legs: int = 6):
 
     return {
         "distance_nm": route["distance_nm"],
+        "num_legs": n_legs,
         "min_time_h": min_time_h,
         "baseline_time_h": baseline_time_h,
         "suggested_eta_h": suggested_eta_h,
@@ -167,14 +180,17 @@ async def optimize(req: OptimizeRequest):
             raise HTTPException(status_code=400, detail=f"Unknown dest: {req.dest}")
         route = get_sea_route(origin_ll, dest_ll)
         route_coords = route["coords_latlon"]
+        # Distance-based leg count unless the request forces one: roughly one leg
+        # per 500 nm (clamped 3..12), so long voyages get finer segmentation.
+        n_legs = req.num_legs or legs_for_distance(route["distance_nm"])
 
         if req.auto_weather:
             # Live weather overrides the manual sliders: query each leg's midpoint
             # concurrently and turn the result into the per-leg fuel inputs —
             # wave height -> weather factor (Hs), wind speed -> Beaufort, and
             # wind direction vs the leg heading -> the wind/heading angle.
-            mids = leg_midpoints(route_coords, req.num_legs)
-            bearings = leg_bearings(route_coords, req.num_legs)
+            mids = leg_midpoints(route_coords, n_legs)
+            bearings = leg_bearings(route_coords, n_legs)
             legs_weather = await fetch_leg_weather(mids)
 
             weather = []
@@ -200,11 +216,11 @@ async def optimize(req: OptimizeRequest):
                 lw["bearing_deg"] = round(brng, 1)
                 lw["theta_deg"] = round(theta_deg, 1) if theta_deg is not None else None
             legs = resample_to_legs(
-                route_coords, req.num_legs, weather, beaufort, wind_angle, current
+                route_coords, n_legs, weather, beaufort, wind_angle, current
             )
         else:
             weather = req.weather
-            legs = resample_to_legs(route_coords, req.num_legs, weather)
+            legs = resample_to_legs(route_coords, n_legs, weather)
     elif req.legs:
         # Legacy explicit-legs path (backward compatible).
         legs = [Leg(l.distance_nm, l.weather) for l in req.legs]
@@ -233,6 +249,32 @@ async def optimize(req: OptimizeRequest):
     if legs_weather is not None:
         for lw, leg, stw in zip(legs_weather, legs, opt["speeds"]):
             lw["sog_kn"] = round(leg_sog(stw, leg), 2)
+
+    # Per-leg optimized breakdown (reuses the engine's own leg_fuel / leg_sog, no
+    # new physics) so the UI can surface each leg's FUEL next to its conditions
+    # and draw the leg boundaries on the map.
+    per_leg = [
+        PerLegOut(
+            leg_index=i,
+            distance_nm=round(leg.distance_nm, 1),
+            speed_kn=round(stw, 2),
+            fuel_t=round(
+                leg_fuel(stw, leg, req.draft_dm, req.load, req.days_since_drydock), 2
+            ),
+            baseline_fuel_t=round(
+                leg_fuel(
+                    req.service_speed, leg, req.draft_dm, req.load, req.days_since_drydock
+                ),
+                2,
+            ),
+            weather_factor=round(leg.weather, 3),
+            beaufort=round(leg.beaufort, 1),
+            wave_m=round(weather_factor_to_wave_m(leg.weather), 2),
+            current_kn=round(leg.current_along_kn, 2),
+            sog_kn=round(leg_sog(stw, leg), 2),
+        )
+        for i, (leg, stw) in enumerate(zip(legs, opt["speeds"]))
+    ]
 
     base_cii = rate_voyage(base["total_fuel"], req.dwt, distance, req.year)
     opt_cii = rate_voyage(opt["total_fuel"], req.dwt, distance, req.year)
@@ -303,6 +345,8 @@ async def optimize(req: OptimizeRequest):
         co2_saved_t=co2_saved_t,
         money_saved_usd=money_saved_usd,
         distance_nm=distance,
+        num_legs=len(legs),
+        per_leg=per_leg,
         route_coords=route_coords,
         eca_zones=eca_zones_out,
         feasible=opt["feasible"],
@@ -311,7 +355,7 @@ async def optimize(req: OptimizeRequest):
     )
 
 
-async def _legs_and_weather(route_coords, req):
+async def _legs_and_weather(route_coords, req, n_legs):
     """Resample a route into legs, with live weather+current when auto_weather.
 
     Mirrors the auto-weather leg-building used by /optimize (kept separate so the
@@ -321,8 +365,8 @@ async def _legs_and_weather(route_coords, req):
     the client and for the worst-leg pick.
     """
     if req.auto_weather:
-        mids = leg_midpoints(route_coords, req.num_legs)
-        bearings = leg_bearings(route_coords, req.num_legs)
+        mids = leg_midpoints(route_coords, n_legs)
+        bearings = leg_bearings(route_coords, n_legs)
         legs_weather = await fetch_leg_weather(mids)
         weather, beaufort, wind_angle, current = [], [], [], []
         for lw, brng in zip(legs_weather, bearings):
@@ -343,10 +387,10 @@ async def _legs_and_weather(route_coords, req):
             lw["bearing_deg"] = round(brng, 1)
             lw["theta_deg"] = round(theta_deg, 1) if theta_deg is not None else None
         legs = resample_to_legs(
-            route_coords, req.num_legs, weather, beaufort, wind_angle, current
+            route_coords, n_legs, weather, beaufort, wind_angle, current
         )
         return legs, legs_weather
-    legs = resample_to_legs(route_coords, req.num_legs, req.weather)
+    legs = resample_to_legs(route_coords, n_legs, req.weather)
     return legs, None
 
 
@@ -357,7 +401,10 @@ async def _score_candidate(cid, label, route_coords, req, approx=False):
     ECA-blended cost) on this candidate's geometry and returns a flat summary
     dict (including the baseline figures so the UI can show "X -> Y").
     """
-    legs, legs_weather = await _legs_and_weather(route_coords, req)
+    # Each candidate gets its own distance-based leg count (unless forced), so a
+    # long Cape-of-Good-Hope lane is segmented finer than the short direct one.
+    n_legs = req.num_legs or legs_for_distance(polyline_distance_nm(route_coords))
+    legs, legs_weather = await _legs_and_weather(route_coords, req, n_legs)
     distance = sum(leg.distance_nm for leg in legs)
 
     base = baseline_voyage(
@@ -461,8 +508,11 @@ async def alternatives(req: OptimizeRequest):
     # 3) Weather/current waypoint-nudge — only with live data and a worst leg.
     if req.auto_weather and shortest["legs_weather"]:
         widx = worst_leg_index(shortest["legs_weather"])
+        # Use the SAME leg count the shortest candidate was segmented into, so the
+        # worst-leg midpoint lines up with the leg `widx` came from.
+        shortest_n_legs = req.num_legs or legs_for_distance(shortest_route["distance_nm"])
         wc = weather_current_route(
-            origin_ll, dest_ll, shortest_route["coords_latlon"], widx, req.num_legs
+            origin_ll, dest_ll, shortest_route["coords_latlon"], widx, shortest_n_legs
         )
         if wc is not None:
             candidates.append(
