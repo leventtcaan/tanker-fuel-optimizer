@@ -41,6 +41,7 @@ from economics import (
     ETS_EUR_PER_TCO2,
 )
 from zones import eca_split, ECA_ZONES
+from vessels import VESSELS, fetch_vessel
 from alt_routes import (
     crosses_hra,
     hra_avoiding_route,
@@ -103,6 +104,24 @@ def ports_nearest(lat: float, lon: float):
 def zones():
     """Maritime zone polygons (ECA + piracy HRA) as GeoJSON, for the map to draw."""
     return _ZONES_GEOJSON
+
+
+@app.get("/vessels")
+def list_vessels():
+    """Static fleet list (imo + display name) for the dropdown. No API call."""
+    return [{"imo": v["imo"], "name": v["name"]} for v in VESSELS]
+
+
+@app.get("/vessels/{imo}")
+async def vessel_detail(imo: int):
+    """Live AIS data for one fleet vessel (VesselFinder, cached >= 1 h).
+
+    Returns {available: False, reason} gracefully when the key is missing or the
+    trial is over its hourly limit — it never raises, so the demo keeps working.
+    """
+    if imo not in {v["imo"] for v in VESSELS}:
+        raise HTTPException(status_code=404, detail="Unknown vessel IMO.")
+    return await fetch_vessel(imo)
 
 
 @app.get("/prices")

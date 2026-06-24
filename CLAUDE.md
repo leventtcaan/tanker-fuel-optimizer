@@ -604,3 +604,39 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       VERIFIED: curl dwt=0 / draft_dm=0 -> 422 at backend (guard still protective);
         valid payload -> /optimize, /alternatives, /route_info all 200. test_api.py
         suite green. npm run build OK. bundle 202kB.
+- [x] Phase F9 — live VesselFinder vessel data (5 Karadeniz Holding tankers). DONE.
+      backend test green, build OK.
+      SECURITY: key ONLY in backend/.env (gitignored), read via os.getenv(
+        "VESSELFINDER_API_KEY") at call time. NEVER hardcoded/logged. .env.example
+        committed with EMPTY placeholder. added python-dotenv (load_dotenv at
+        import; doesn't override real env). verified .env ignored, .env.example
+        committable, no key value in any tracked file.
+      TRIAL LIMIT (5 vessels / 5 days / 1 query/hour) RESPECTED: vessels.py fetches
+        ALL 5 IMOs in ONE batched call (API takes comma-sep imo list), caches per
+        IMO 1h (CACHE_TTL_S=3600), + process-level rate guard (_MIN_CALL_INTERVAL
+        3600, timestamp set BEFORE request so failures don't retry-hammer).
+      BACKEND vessels.py: VESSELS = 5 KH IMOs (9359600/9447287/9311646/9378022/
+        9443841) + placeholder names. async fetch_vessel(imo) -> {imo,name,
+        speed_kn,lat,lon,draught_m,dwt,destination,course,heading,nav_status,...}
+        from https://api.vesselfinder.com/vessels?userkey&imo&format=json&
+        extradata=master (AIS SPEED kn / DRAUGHT m; MASTERDATA DWT+NAME). graceful
+        fallback {available:false,reason} on no key / error / over-limit / non-list
+        payload (trial returns a JSON error string -> isinstance(list) guard, no
+        crash). main.py: GET /vessels (static list, NO api call) + GET
+        /vessels/{imo} (404 if not fleet, else fetch_vessel; never raises).
+      VERIFIED: offline mock proves BOTH branches (error-string -> available:false;
+        valid array -> available:true speed 12.4 dwt 74000 name from MASTERDATA),
+        ZERO live calls. one real call during test_api.py -> trial over-limit ->
+        clean fallback available:false reason=unavailable (no crash). /vessels live
+        on server = 5 entries. test_api.py +test_vessels (5 entries, 404 unknown,
+        detail has 'available', tolerant of live-or-fallback) +
+        test_vessels_no_key_fallback (pop key -> available:false reason=no_api_key,
+        no API call). ALL green. did NOT re-hit /vessels/{imo} on server (preserve
+        quota; behavior already proven).
+      FRONTEND page.tsx: "Gemi (Karadeniz Holding)" Section (dropdown, after Rota).
+        select -> GET /vessels/{imo}; available -> autofill DWT + draft (editable;
+        debounce re-optimizes) + "● Canlı veri" note; !available -> "○ Canlı gemi
+        verisi alınamadı (trial/limit)" note, manual inputs still work. results
+        panel: "Gemi vs PRUVA" card = geminin anlık hızı X kn vs PRUVA önerisi
+        (dist-weighted avg of optimized per-leg speeds) Y kn + fark/tasarruf note.
+        manual port/DWT entry unaffected. npm run build OK. bundle 203kB.

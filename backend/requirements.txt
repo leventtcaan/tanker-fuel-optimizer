@@ -4,3 +4,4 @@ fastapi
 uvicorn[standard]
 httpx
 searoute
+python-dotenv

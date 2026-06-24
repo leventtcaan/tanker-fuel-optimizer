@@ -90,6 +90,24 @@ type AltRoute = {
   min_time_h: number;
 };
 
+// Fleet dropdown entry (GET /vessels) and live AIS detail (GET /vessels/{imo}).
+type VesselListItem = { imo: number; name: string };
+type VesselData = {
+  imo: number;
+  name: string;
+  available: boolean;
+  reason?: string;
+  speed_kn?: number | null;
+  course?: number | null;
+  heading?: number | null;
+  lat?: number | null;
+  lon?: number | null;
+  draught_m?: number | null;
+  dwt?: number | null;
+  destination?: string | null;
+  eta?: string | null;
+};
+
 type LegWeather = {
   factor: number;
   wave_m: number | null;
@@ -307,6 +325,13 @@ export default function Home() {
   const [originPort, setOriginPort] = useState<Port | null>(null);
   const [destPort, setDestPort] = useState<Port | null>(null);
 
+  // Karadeniz Holding fleet (live VesselFinder AIS). The dropdown list is static;
+  // picking a vessel fetches its live data and auto-fills DWT + draft.
+  const [vesselList, setVesselList] = useState<VesselListItem[]>([]);
+  const [selectedVesselImo, setSelectedVesselImo] = useState<number | "">("");
+  const [vesselData, setVesselData] = useState<VesselData | null>(null);
+  const [vesselLoading, setVesselLoading] = useState(false);
+
   // Voyage controls (form state).
   // ETA + its slider bounds are route-aware: set from /route_info so the user can
   // never pick an infeasible ETA and the default lands on a fuel-saving value.
@@ -399,6 +424,41 @@ export default function Home() {
         /* keep the reference defaults */
       });
   }, []);
+
+  // Load the static Karadeniz Holding fleet list once (no API call server-side).
+  useEffect(() => {
+    fetch(`${API}/vessels`)
+      .then((r) => r.json())
+      .then((list: VesselListItem[]) => setVesselList(list))
+      .catch(() => setVesselList([]));
+  }, []);
+
+  // Pick a fleet vessel -> fetch its live AIS data (cached + rate-limited on the
+  // backend). On success auto-fill DWT + draft (still editable); on failure keep
+  // manual inputs and show an honest "no live data" note.
+  async function handleSelectVessel(imo: number | "") {
+    setSelectedVesselImo(imo);
+    if (imo === "") {
+      setVesselData(null);
+      return;
+    }
+    setVesselLoading(true);
+    try {
+      const res = await fetch(`${API}/vessels/${imo}`);
+      const data: VesselData = await res.json();
+      setVesselData(data);
+      if (data.available) {
+        // Auto-fill the vessel's real specs (the debounce re-optimizes with them).
+        if (typeof data.dwt === "number" && data.dwt > 0) setDwt(Math.round(data.dwt));
+        if (typeof data.draught_m === "number" && data.draught_m > 0)
+          setDraftDm(data.draught_m);
+      }
+    } catch {
+      setVesselData({ imo: Number(imo), name: String(imo), available: false, reason: "error" });
+    } finally {
+      setVesselLoading(false);
+    }
+  }
 
   // Unambiguous "lat,lon" references for the chosen ports (70 names repeat).
   const originRef = originPort ? `${originPort.lat},${originPort.lon}` : "";
@@ -689,6 +749,24 @@ export default function Home() {
   const co2ReductionPct = co2Baseline > 0 ? (co2Saved / co2Baseline) * 100 : 0;
   const CO2_TARGET_PCT = 5; // brief's ~5% reduction goal (reference only)
 
+  // Representative PRUVA-suggested speed: the distance-weighted mean of the
+  // optimized per-leg speeds (falls back to the plain mean of the speed list).
+  // Compared against the vessel's REAL current AIS speed below.
+  const suggestedSpeedKn = (() => {
+    const pl = displayResult?.per_leg;
+    if (pl && pl.length > 0) {
+      const dist = pl.reduce((s, p) => s + p.distance_nm, 0);
+      if (dist > 0) return pl.reduce((s, p) => s + p.speed_kn * p.distance_nm, 0) / dist;
+    }
+    const sp = displayResult?.optimized.speeds;
+    if (sp && sp.length > 0) return sp.reduce((s, v) => s + v, 0) / sp.length;
+    return null;
+  })();
+  const vesselSpeed =
+    vesselData?.available && typeof vesselData.speed_kn === "number"
+      ? vesselData.speed_kn
+      : null;
+
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* Top bar: PRUVA wordmark + tagline + honest DEMO pill. */}
@@ -727,6 +805,46 @@ export default function Home() {
               value={destPort}
               onSelect={setDestPort}
             />
+          </Section>
+
+          <Section title="Gemi (Karadeniz Holding)">
+            <div>
+              <label className="pruva-label">Gemi seç (canlı AIS)</label>
+              <select
+                value={selectedVesselImo}
+                onChange={(e) =>
+                  handleSelectVessel(e.target.value === "" ? "" : Number(e.target.value))
+                }
+                className="pruva-input"
+              >
+                <option value="">Manuel (gemi seçme)</option>
+                {vesselList.map((v) => (
+                  <option key={v.imo} value={v.imo}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {vesselLoading && (
+              <p className="text-xs text-[var(--muted)]">Gemi verisi alınıyor…</p>
+            )}
+            {vesselData && vesselData.available && (
+              <p className="text-xs text-[var(--accent)]">
+                ● Canlı veri: {vesselData.name}
+                {typeof vesselData.speed_kn === "number" &&
+                  ` · ${vesselData.speed_kn.toFixed(1)} kn`}
+                {vesselData.destination ? ` → ${vesselData.destination}` : ""}
+                <span className="block text-[var(--muted)]">
+                  DWT ve draft gerçek veriden dolduruldu (düzenlenebilir).
+                </span>
+              </p>
+            )}
+            {vesselData && !vesselData.available && (
+              <p className="text-xs text-[var(--muted)]">
+                ○ Canlı gemi verisi alınamadı (trial/limit). Manuel girişler
+                geçerli.
+              </p>
+            )}
           </Section>
 
           <Section title="Sefer">
@@ -1167,6 +1285,57 @@ export default function Home() {
                   </>
                 )}
               </div>
+
+              {/* Live vessel vs PRUVA suggestion — real AIS speed against the
+                  optimized speed. Only when a fleet vessel with live data is
+                  selected; otherwise the rest of the panel works unchanged. */}
+              {vesselSpeed !== null && suggestedSpeedKn !== null && (
+                <div className="pruva-card p-4">
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Gemi vs PRUVA · {vesselData?.name}
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                        Geminin anlık hızı
+                      </p>
+                      <p className="text-lg font-bold mt-0.5">
+                        {vesselSpeed.toFixed(1)} kn
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                        PRUVA önerisi (ort.)
+                      </p>
+                      <p className="text-lg font-bold mt-0.5 text-[var(--accent)]">
+                        {suggestedSpeedKn.toFixed(1)} kn
+                      </p>
+                    </div>
+                  </div>
+                  {(() => {
+                    const diff = vesselSpeed - suggestedSpeedKn;
+                    if (diff > 0.1)
+                      return (
+                        <p className="text-sm text-[var(--muted)] mt-2">
+                          Gemi öneriden {diff.toFixed(1)} kn daha hızlı —
+                          yavaşlama ile yakıt tasarrufu potansiyeli.
+                        </p>
+                      );
+                    if (diff < -0.1)
+                      return (
+                        <p className="text-sm text-[var(--muted)] mt-2">
+                          Gemi öneriden {Math.abs(diff).toFixed(1)} kn daha yavaş
+                          seyrediyor — varış süresine dikkat.
+                        </p>
+                      );
+                    return (
+                      <p className="text-sm text-[var(--muted)] mt-2">
+                        Gemi zaten öneriye yakın hızda seyrediyor.
+                      </p>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* SEFER TAHMİNİ — route header, warnings, zone chips, metric grid. */}
               <div className="pruva-card p-4 space-y-3">

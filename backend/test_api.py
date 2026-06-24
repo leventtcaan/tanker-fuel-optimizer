@@ -305,6 +305,71 @@ def test_per_leg_and_segmentation():
     print("Per-leg / segmentation assertions passed.")
 
 
+def test_vessels():
+    """Phase F9: fleet list (5) + a single live-or-fallback vessel lookup.
+
+    The detail call makes at most one real VesselFinder query (the module batches
+    + caches >= 1 h), so this test must NOT be run on a tight loop. It tolerates
+    BOTH outcomes: live data when the trial key works, or a clean
+    available:false fallback when the key is missing / over its hourly limit.
+    """
+    fleet = client.get("/vessels").json()
+    assert len(fleet) == 5, fleet
+    assert all("imo" in v and "name" in v for v in fleet), fleet
+    # The fixed Karadeniz Holding IMOs are exactly these.
+    assert {v["imo"] for v in fleet} == {
+        9359600,
+        9447287,
+        9311646,
+        9378022,
+        9443841,
+    }, fleet
+
+    # Unknown IMO -> 404 (we never spend the quota on arbitrary IMOs).
+    assert client.get("/vessels/1234567").status_code == 404
+
+    # Detail: must always carry an 'available' flag and never error.
+    detail = client.get(f"/vessels/{fleet[0]['imo']}").json()
+    assert "available" in detail, detail
+    if detail["available"]:
+        # Live data: position + speed fields present (units: kn, m per VF docs).
+        for key in ("speed_kn", "lat", "lon", "draught_m"):
+            assert key in detail, detail
+        print("\n=== Vessels (LIVE VesselFinder data) ===")
+        print(
+            f"  {detail['name']}: speed={detail['speed_kn']} kn  "
+            f"pos=({detail['lat']},{detail['lon']})  draught={detail['draught_m']} m  "
+            f"dwt={detail.get('dwt')}  dest={detail.get('destination')}"
+        )
+    else:
+        assert "reason" in detail, detail
+        print("\n=== Vessels (graceful fallback, no live data) ===")
+        print(f"  {detail['name']}: available=False reason={detail['reason']}")
+    print(f"  fleet size: {len(fleet)} vessels")
+    print("Vessels assertions passed.")
+
+
+def test_vessels_no_key_fallback():
+    """Phase F9: with no API key the detail endpoint degrades cleanly (no call)."""
+    import os
+    import vessels as vx
+
+    saved = os.environ.pop("VESSELFINDER_API_KEY", None)
+    try:
+        detail = client.get("/vessels/9359600").json()
+        assert detail["available"] is False, detail
+        assert detail["reason"] == "no_api_key", detail
+        assert detail["imo"] == 9359600 and detail["name"], detail
+    finally:
+        if saved is not None:
+            os.environ["VESSELFINDER_API_KEY"] = saved
+        vx._CACHE.clear()
+
+    print("\n=== Vessels fallback (no API key) ===")
+    print("  /vessels/9359600 -> available=False reason=no_api_key (no API call)")
+    print("Vessels no-key fallback assertions passed.")
+
+
 def _weather_payload(auto_weather):
     izmir = client.get("/ports/search", params={"q": "izmir"}).json()[0]
     sing = client.get("/ports/search", params={"q": "singapore"}).json()[0]
@@ -380,4 +445,6 @@ if __name__ == "__main__":
     test_alternatives()
     test_auto_weather()
     test_weather_fallback()
+    test_vessels()
+    test_vessels_no_key_fallback()
     print("\nAll assertions passed.")
