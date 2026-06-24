@@ -587,3 +587,20 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       test_api.py +test_per_leg_and_segmentation (per_leg len==num_legs, fuel/dist
         sums match totals, leg count scales long>short + clamps, override wins).
         ALL backend tests green. npm run build OK. bundle 202kB.
+- [x] DEBUG — F6 422 Unprocessable Entity on /optimize. FIXED + verified (curl).
+      NOT a static schema mismatch: default payload to /optimize, /alternatives,
+      /route_info all 200. ROOT CAUSE = F6's debounced auto-reoptimize now POSTs
+      on EVERY input change, including mid-edit. The free-text number inputs
+      (DWT/Draft/Servis Hızı/Drydock) do setX(Number(e.target.value)); clearing
+      one makes Number("")===0, and the debounce fires that 0. Schema has dwt gt=0
+      + draft_dm gt=0 -> 422 ({"type":"greater_than","loc":["body","dwt"|"draft_dm"]}).
+      Pre-F6 nothing auto-fired so an empty field never reached the server.
+      FIX (frontend, page.tsx — backend gt=0 is correct, kept; 0 dwt/draft is
+        meaningless + breaks fuel/CII math, so NOT loosened): added inputsValid
+        guard (dwt>0, draft_dm>0, service_speed>0, days_since_drydock>=0,
+        berth_eta_h>0, load in [0,1]). handleOptimize early-returns w/ TR error if
+        invalid; debounce effect returns without POSTing; Optimize btn disabled
+        until valid. Frontend now never sends a schema-invalid payload.
+      VERIFIED: curl dwt=0 / draft_dm=0 -> 422 at backend (guard still protective);
+        valid payload -> /optimize, /alternatives, /route_info all 200. test_api.py
+        suite green. npm run build OK. bundle 202kB.

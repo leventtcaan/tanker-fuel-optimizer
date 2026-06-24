@@ -529,9 +529,26 @@ export default function Home() {
     }
   }
 
+  // The backend schema requires dwt > 0, draft_dm > 0 and load in [0,1]. A
+  // free-text number input the user momentarily clears becomes Number("") === 0,
+  // and the F6 debounced re-optimize would POST that mid-edit value and get a
+  // 422 back. Gate every /optimize call on the payload being schema-valid so we
+  // never send an out-of-range request (and disable the button until it is).
+  const inputsValid =
+    Number.isFinite(dwt) && dwt > 0 &&
+    Number.isFinite(draftDm) && draftDm > 0 &&
+    Number.isFinite(serviceSpeed) && serviceSpeed > 0 &&
+    Number.isFinite(daysSinceDrydock) && daysSinceDrydock >= 0 &&
+    Number.isFinite(berthEta) && berthEta > 0 &&
+    load >= 0 && load <= 1;
+
   async function handleOptimize(etaOverride?: number) {
     if (!originRef || !destRef) {
       setError("Lütfen kalkış ve varış limanı seçin");
+      return;
+    }
+    if (!inputsValid) {
+      setError("Geçersiz girdi: DWT, draft ve servis hızı 0'dan büyük olmalı.");
       return;
     }
     const eta = etaOverride ?? berthEta;
@@ -572,6 +589,7 @@ export default function Home() {
   useEffect(() => {
     if (!didAutoRun.current) return; // first run is handled on route load
     if (!originRef || !destRef) return;
+    if (!inputsValid) return; // never POST a schema-invalid payload mid-edit
     if (optSig === lastOptSig.current) return; // nothing actually changed
     const t = setTimeout(() => handleOptimize(), 600);
     return () => clearTimeout(t);
@@ -949,7 +967,7 @@ export default function Home() {
 
           <button
             onClick={() => handleOptimize()}
-            disabled={loading}
+            disabled={loading || !inputsValid}
             className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] text-[#04201c] font-semibold px-4 py-2.5 hover:opacity-90 disabled:opacity-50"
           >
             {loading && (
