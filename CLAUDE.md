@@ -744,3 +744,15 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         test_vessels_no_key_fallback uses in-fleet 9447287 (removed IMO would 404
         before the key check). verified static /vessels + 404 + offline tests
         green WITHOUT a live call. npm run build OK. bundle 203kB.
+- [x] Live vessel marker on the map. DONE. build OK. NO backend change.
+      verified lat/lon/speed_kn/nav_status already in /vessels/{imo} response
+      (endpoint returns the fetch_vessel dict, no response_model) -> no schema add.
+      RouteMap.tsx: new optional `vessel` prop. distinct ship badge DivIcon (blue
+      circle + white ship, different from navy origin / red dest teardrops) at the
+      AIS lat/lon; popup "NAME · X.X kn · seyirde|demirde" (navStatusTr: navstat
+      1/5 or speed 0 -> demirde, else seyirde). FitBounds now fits route + vessel
+      (useMemo on coords/vessel pos so it only re-fits on real change) -> marker
+      always visible. marker rendered outside the hasRoute block; removed only
+      when no vessel / available:false.
+      page.tsx: vesselMarker = available && numeric lat/lon ? {lat,lon,name,
+      speed_kn,nav_status} : null, passed as vessel prop. npm run build OK. 204kB.

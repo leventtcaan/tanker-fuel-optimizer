@@ -786,6 +786,21 @@ export default function Home() {
       ? vesselData.speed_kn
       : null;
 
+  // Live vessel position for the map: only when a vessel is selected, available,
+  // and has real coordinates. null removes the marker (no vessel / unavailable).
+  const vesselMarker =
+    vesselData?.available &&
+    typeof vesselData.lat === "number" &&
+    typeof vesselData.lon === "number"
+      ? {
+          lat: vesselData.lat,
+          lon: vesselData.lon,
+          name: vesselData.name,
+          speed_kn: vesselData.speed_kn ?? null,
+          nav_status: vesselData.nav_status ?? null,
+        }
+      : null;
+
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* Top bar: PRUVA wordmark + tagline + honest DEMO pill. */}
@@ -1176,6 +1191,7 @@ export default function Home() {
               pickMode={pickMode}
               onMapPick={handleMapPick}
               routeColor={selectedAlt ? altColor(selectedAlt.id) : undefined}
+              vessel={vesselMarker}
             />
           </div>
         </div>

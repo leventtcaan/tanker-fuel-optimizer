@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CircleMarker,
   LayerGroup,
@@ -39,6 +39,15 @@ type ZoneFeature = {
 
 type PickMode = "off" | "origin" | "dest";
 
+// Live AIS position of a selected fleet vessel (from /vessels/{imo}).
+type VesselMarker = {
+  lat: number;
+  lon: number;
+  name: string;
+  speed_kn?: number | null;
+  nav_status?: number | null;
+};
+
 type Props = {
   routeCoords: LatLon[];
   originName?: string;
@@ -50,6 +59,8 @@ type Props = {
   // When an alternative route is selected, its distinct colour for the line
   // (storm legs still draw red on top). Defaults to the standard teal.
   routeColor?: string;
+  // Live position of the selected vessel; null = no marker.
+  vessel?: VesselMarker | null;
 };
 
 const ROUTE_TEAL = "#2dd4bf"; // ECA zone tint + alternative-route fallback colour
@@ -71,6 +82,27 @@ const teardrop = (fill: string) =>
   });
 const ORIGIN_ICON = teardrop(ROUTE_NAVY);
 const DEST_ICON = teardrop(ROUTE_STORM);
+
+// Distinct vessel marker: a little ship in a blue badge, clearly different from
+// the origin/dest teardrop pins. Anchored at its centre (the AIS lat/lon).
+const VESSEL_ICON = L.divIcon({
+  className: "",
+  html: `<svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))">
+    <circle cx="15" cy="15" r="13" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+    <path d="M7 16 h16 l-2.5 5 H9.5 z" fill="#ffffff"/>
+    <rect x="12.5" y="8" width="5" height="6" fill="#ffffff"/>
+    <rect x="14.4" y="4.5" width="1.2" height="4" fill="#ffffff"/>
+  </svg>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+});
+
+// Turkish nav-status label: AIS 1 = at anchor, 5 = moored, or speed 0 -> "demirde";
+// anything underway -> "seyirde".
+function navStatusTr(speed?: number | null, nav?: number | null): string {
+  const moored = nav === 1 || nav === 5 || speed === 0;
+  return moored ? "demirde" : "seyirde";
+}
 
 // Split the full polyline into k contiguous chunks matching the backend's leg
 // resampling, so each leg segment can be colored by its weather.
@@ -134,6 +166,7 @@ export default function RouteMap({
   pickMode = "off",
   onMapPick,
   routeColor = ROUTE_NAVY,
+  vessel,
 }: Props) {
   const [zones, setZones] = useState<ZoneFeature[]>([]);
 
@@ -176,6 +209,14 @@ export default function RouteMap({
           return { pos: routeCoords[idx], leg, legNo: b + 1, storm: factor > STORM_FACTOR };
         })
       : [];
+
+  // Fit the map to the route AND the vessel marker (when present) so the ship is
+  // always in view. Memoised on the actual coordinates so it only re-fits when
+  // the route or the vessel position changes (not on every render).
+  const fitCoords = useMemo<LatLon[]>(
+    () => (vessel ? [...routeCoords, [vessel.lat, vessel.lon]] : routeCoords),
+    [routeCoords, vessel?.lat, vessel?.lon] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   return (
     <div className="pruva-card overflow-hidden h-full min-h-[460px]">
@@ -335,9 +376,24 @@ export default function RouteMap({
                 <Popup>{destName ?? "Varış"}</Popup>
               </Marker>
             )}
-            <FitBounds coords={routeCoords} />
           </>
         )}
+
+        {/* Live position of the selected fleet vessel (available:true only). A
+            distinct ship badge, with a popup of name + speed + nav status. */}
+        {vessel && (
+          <Marker position={[vessel.lat, vessel.lon]} icon={VESSEL_ICON}>
+            <Popup>
+              {vessel.name}
+              {typeof vessel.speed_kn === "number" &&
+                ` · ${vessel.speed_kn.toFixed(1)} kn`}
+              {` · ${navStatusTr(vessel.speed_kn, vessel.nav_status)}`}
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Fit to the route + vessel so the ship is always visible. */}
+        {fitCoords.length > 0 && <FitBounds coords={fitCoords} />}
       </MapContainer>
     </div>
   );
