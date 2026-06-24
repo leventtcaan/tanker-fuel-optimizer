@@ -154,6 +154,20 @@ const DEFAULT_FUEL_PRICES: Record<string, number> = {
 };
 const DEFAULT_ETS_PRICE = 85.0;
 
+// Map a backend vessel "reason" code to an honest Turkish explanation, so the
+// user knows WHICH cause they hit (auth vs hourly limit vs request error) rather
+// than a vague "trial/limit".
+const VESSEL_REASON_TR: Record<string, string> = {
+  no_api_key: "API anahtarı tanımlı değil",
+  auth: "Trial aktif değil / geçersiz anahtar (yetki)",
+  rate_limited: "Saatlik sorgu limiti",
+  request_error: "İstek hatası",
+  network: "Bağlantı hatası",
+  unavailable: "Canlı veri yok",
+};
+const vesselReasonTr = (reason?: string) =>
+  VESSEL_REASON_TR[reason ?? "unavailable"] ?? "Canlı veri yok";
+
 // Thousands-separated integer formatting (Turkish locale).
 const fmt = (n: number) => Math.round(n).toLocaleString("tr-TR");
 
@@ -841,8 +855,8 @@ export default function Home() {
             )}
             {vesselData && !vesselData.available && (
               <p className="text-xs text-[var(--muted)]">
-                ○ Canlı gemi verisi alınamadı (trial/limit). Manuel girişler
-                geçerli.
+                ○ Canlı gemi verisi alınamadı: {vesselReasonTr(vesselData.reason)}.
+                Manuel girişler geçerli.
               </p>
             )}
           </Section>

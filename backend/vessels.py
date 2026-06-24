@@ -62,7 +62,46 @@ _MIN_CALL_INTERVAL_S = 3600
 
 _CACHE: dict[int, tuple[float, dict]] = {}  # imo -> (expires_at, data)
 _last_call_at = 0.0  # epoch seconds of the last actual API call (rate guard)
+_last_reason = None  # reason code from the most recent API attempt (see _classify_error)
 _lock = asyncio.Lock()  # serialize batched refreshes across concurrent requests
+
+
+def _classify_error(status_code, body_text, payload):
+    """Map a non-success VesselFinder response to a stable reason code.
+
+    VesselFinder returns HTTP 200 with a body like {"error": "Invalid Userkey!"}
+    for auth problems (rather than a 401), and a separate message when the query
+    quota is exhausted. We inspect the error text (and status) so the UI can tell
+    an inactive/invalid key apart from a real hourly limit apart from a malformed
+    request, instead of lumping them all into one opaque "unavailable".
+
+    Returns one of: "auth", "rate_limited", "request_error".
+    """
+    msg = ""
+    if isinstance(payload, dict):
+        msg = str(payload.get("error") or payload.get("message") or "")
+    blob = (msg or body_text or "").lower()
+    if (
+        status_code in (401, 403)
+        or "userkey" in blob
+        or "api key" in blob
+        or "auth" in blob
+        or "access denied" in blob
+        or "not active" in blob
+        or "inactive" in blob
+        or "subscription" in blob
+        or "expired" in blob
+    ):
+        return "auth"
+    if (
+        status_code == 429
+        or "limit" in blob
+        or "quota" in blob
+        or "exceed" in blob
+        or "too many" in blob
+    ):
+        return "rate_limited"
+    return "request_error"
 
 
 def _api_key():
@@ -122,16 +161,29 @@ async def _refresh_all():
     the hourly window. The rate timestamp is set BEFORE the request so a
     transient failure or over-limit response still counts as the hour's single
     attempt — we never retry-hammer a flaky or rate-limited API.
+
+    Returns a reason code (str) when no data could be loaded ("auth",
+    "rate_limited", "request_error", "network"), or None on success. The reason
+    is remembered (_last_reason) so that while the hourly guard blocks further
+    calls we still report the TRUE cause (e.g. an invalid key) rather than a
+    generic limit message.
+
+    NOTE on request format: the endpoint/params below match the VesselFinder
+    VesselsList docs (userkey + comma-separated imo + format + extradata). An
+    invalid/inactive key comes back as HTTP 200 with {"error": "..."}, NOT a 4xx,
+    so we must read the body to classify it — raise_for_status would hide it.
     """
-    global _last_call_at
+    global _last_call_at, _last_reason
     key = _api_key()
     if not key:
-        return
+        return "no_api_key"
     async with _lock:
         now = time.time()
-        # Another coroutine may have refreshed while we waited for the lock.
+        # Another coroutine may have refreshed while we waited for the lock, or we
+        # are inside the hourly guard window: surface the last known cause so an
+        # invalid key isn't masked as a "limit".
         if _last_call_at > 0 and now - _last_call_at < _MIN_CALL_INTERVAL_S:
-            return
+            return _last_reason or "rate_limited"
         _last_call_at = now
         try:
             async with httpx.AsyncClient() as client:
@@ -145,16 +197,20 @@ async def _refresh_all():
                     },
                     timeout=REQUEST_TIMEOUT_S,
                 )
-                resp.raise_for_status()
-                records = resp.json()
-        except (httpx.HTTPError, ValueError):
-            return  # leave the cache as-is; callers get a clean available:false
-        # A successful trial response is a JSON array of {AIS, MASTERDATA}. On an
-        # auth/over-limit error VesselFinder may return a JSON string or object
-        # instead; treat anything that is not a list of records as "no data" so
-        # we degrade gracefully rather than crash.
-        if not isinstance(records, list):
-            return
+        except httpx.HTTPError:
+            _last_reason = "network"
+            return _last_reason
+        try:
+            records = resp.json()
+        except ValueError:
+            records = None
+        # A successful response is a JSON array of {AIS, MASTERDATA}. Anything
+        # else (an {"error": ...} object/string, or a non-200) is a failure we
+        # classify from the body so the UI can distinguish the cause.
+        if resp.status_code != 200 or not isinstance(records, list):
+            _last_reason = _classify_error(resp.status_code, resp.text, records)
+            return _last_reason
+        _last_reason = None
         expires = time.time() + CACHE_TTL_S
         for rec in records:
             if not isinstance(rec, dict):
@@ -183,10 +239,10 @@ async def fetch_vessel(imo):
     cached = _cache_get(imo)
     if cached is not None:
         return cached
-    await _refresh_all()
+    reason = await _refresh_all()
     cached = _cache_get(imo)
     if cached is not None:
         return cached
-    # No key issue, but no data: either the hourly guard blocked the call or the
-    # API errored / didn't return this IMO.
-    return _unavailable(imo, "unavailable")
+    # No cached data: report the real cause from the API attempt (auth /
+    # rate_limited / request_error / network), falling back to a generic code.
+    return _unavailable(imo, reason or "unavailable")

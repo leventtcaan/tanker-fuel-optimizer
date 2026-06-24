@@ -349,6 +349,30 @@ def test_vessels():
     print("Vessels assertions passed.")
 
 
+def test_vessel_reason_classification():
+    """Phase F9b: the error classifier distinguishes auth / limit / request errors.
+
+    Pure-function test (NO network/live call): VesselFinder returns HTTP 200 with
+    {"error": "Invalid Userkey!"} for a bad key, so we must read the body to tell
+    an inactive/invalid key apart from a real hourly limit apart from a bad param.
+    """
+    import vessels as vx
+
+    # Auth: invalid/inactive key (the real observed case) and 401/403.
+    assert vx._classify_error(200, "", {"error": "Invalid Userkey!"}) == "auth"
+    assert vx._classify_error(403, "Access denied", {"error": "Access denied"}) == "auth"
+    assert vx._classify_error(200, "", {"error": "API key not active"}) == "auth"
+    # Rate limit: explicit quota message and HTTP 429.
+    assert vx._classify_error(200, "", {"error": "Hourly query limit exceeded"}) == "rate_limited"
+    assert vx._classify_error(429, "Too Many Requests", None) == "rate_limited"
+    # Anything else -> request error.
+    assert vx._classify_error(200, "", {"error": "Invalid IMO"}) == "request_error"
+
+    print("\n=== Vessel error classification (offline) ===")
+    print("  Invalid Userkey -> auth · limit exceeded -> rate_limited · other -> request_error")
+    print("Vessel reason-classification assertions passed.")
+
+
 def test_vessels_no_key_fallback():
     """Phase F9: with no API key the detail endpoint degrades cleanly (no call)."""
     import os
@@ -446,5 +470,6 @@ if __name__ == "__main__":
     test_auto_weather()
     test_weather_fallback()
     test_vessels()
+    test_vessel_reason_classification()
     test_vessels_no_key_fallback()
     print("\nAll assertions passed.")

@@ -640,3 +640,29 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         panel: "Gemi vs PRUVA" card = geminin anlık hızı X kn vs PRUVA önerisi
         (dist-weighted avg of optimized per-leg speeds) Y kn + fark/tasarruf note.
         manual port/DWT entry unaffected. npm run build OK. bundle 203kB.
+- [x] DEBUG F9b — vessel available:false root cause + clearer reasons. DONE (1 live call).
+      DIAGNOSED (masked, 1 controlled call): request is CORRECT per docs —
+        GET api.vesselfinder.com/vessels?userkey=<masked>&imo=<csv>&format=json&
+        extradata=master -> HTTP 200, application/json, body {"error":"Invalid
+        Userkey!"}. So NOT the hourly limit and NOT a param/endpoint/format
+        mismatch: the KEY in .env (len 17, looks like a placeholder) is rejected
+        as invalid. Old code raise_for_status + bare except discarded the body and
+        the non-list branch mislabeled this AUTH error as generic "unavailable"
+        (UI showed "trial/limit").
+      FIX (vessels.py, no request change needed): drop raise_for_status; read
+        status+body; _classify_error -> stable reason codes auth / rate_limited /
+        request_error / network (auth = Invalid Userkey/401/403/inactive/expired;
+        rate_limited = quota/limit/429). _refresh_all returns the reason +
+        remembers _last_reason so while the 1h guard blocks calls we still report
+        the TRUE cause (invalid key) not a fake limit. fetch_vessel returns the
+        real reason. FRONTEND: VESSEL_REASON_TR maps codes -> TR ("Trial aktif
+        değil / geçersiz anahtar", "Saatlik sorgu limiti", "İstek hatası",
+        "Bağlantı hatası"); note shows which cause was hit.
+      VERIFIED offline (0 live calls): _classify_error + fetch_vessel mock ->
+        Invalid Userkey=auth, 403=auth, quota=rate_limited, 429=rate_limited,
+        bad param=request_error, valid array=available. test_api.py
+        +test_vessel_reason_classification (pure fn). full suite green (live
+        test_vessels skipped to honor the one-call budget). npm run build OK.
+      CONDITION FOR A SUCCESSFUL LIVE CALL: set a VALID VESSELFINDER_API_KEY in
+        backend/.env (current value returns "Invalid Userkey!"). Request format is
+        already correct; a valid key returns the {AIS, MASTERDATA} array.
