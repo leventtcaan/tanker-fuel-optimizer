@@ -373,6 +373,98 @@ def test_vessel_reason_classification():
     print("Vessel reason-classification assertions passed.")
 
 
+def test_vessel_parsing_offline():
+    """Phase F9c: parse the real VesselsList response shape (NO live call).
+
+    VesselsList returns a top-level array of {AIS, VOYAGE, MASTERDATA}. We mock
+    the HTTP client so this is deterministic and offline: AIS-only (the trial
+    plan's real shape, dwt None) and AIS+MASTERDATA (dwt present) both parse to
+    available:true with real speed/position/draught; an error body degrades.
+    """
+    import asyncio
+    import os
+    import httpx
+    import vessels as vx
+
+    class _Resp:
+        def __init__(self, status, data):
+            self.status_code, self._d, self.text, self.headers, self.url = (
+                status, data, str(data), {}, vx.VESSELFINDER_URL
+            )
+
+        def json(self):
+            return self._d
+
+    class _Client:
+        def __init__(self, resp):
+            self._r = resp
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **k):
+            return self._r
+
+    async def _run(payload):
+        vx._CACHE.clear()
+        vx._last_call_at = 0.0
+        vx._last_reason = None
+        return await vx.fetch_vessel(9359600)
+
+    saved_client = httpx.AsyncClient
+    saved_key = os.environ.get("VESSELFINDER_API_KEY")
+    os.environ["VESSELFINDER_API_KEY"] = "WS-TESTKEY"
+    try:
+        # AIS-only array (the live trial plan's actual shape — no MASTERDATA).
+        httpx.AsyncClient = lambda *a, **k: _Client(
+            _Resp(200, [{"AIS": {
+                "IMO": 9359600, "NAME": "KPS AYBERK BEY", "SPEED": 0.0,
+                "LATITUDE": 40.69941, "LONGITUDE": 29.45576, "DRAUGHT": 5.2,
+                "DESTINATION": "TR YAL", "NAVSTAT": 5}}])
+        )
+        ais = asyncio.run(_run(None))
+        assert ais["available"] is True, ais
+        assert ais["speed_kn"] == 0.0 and ais["draught_m"] == 5.2, ais
+        assert ais["lat"] == 40.69941 and ais["lon"] == 29.45576, ais
+        assert ais["name"] == "KPS AYBERK BEY", ais
+        assert ais["dwt"] is None, ais  # no MASTERDATA on this plan -> graceful None
+
+        # AIS + MASTERDATA (DWT present on richer plans).
+        httpx.AsyncClient = lambda *a, **k: _Client(
+            _Resp(200, [{"AIS": {
+                "IMO": 9359600, "NAME": "X", "SPEED": 12.3,
+                "LATITUDE": 41.0, "LONGITUDE": 29.0, "DRAUGHT": 9.5},
+                "MASTERDATA": {"DWT": 74000, "NAME": "KARADENIZ X"}}])
+        )
+        full = asyncio.run(_run(None))
+        assert full["available"] is True and full["dwt"] == 74000, full
+        assert full["speed_kn"] == 12.3 and full["name"] == "KARADENIZ X", full
+
+        # An error body still degrades cleanly (no crash, available False).
+        httpx.AsyncClient = lambda *a, **k: _Client(
+            _Resp(200, {"error": "Method is not permitted!"})
+        )
+        err = asyncio.run(_run(None))
+        assert err["available"] is False and "reason" in err, err
+    finally:
+        httpx.AsyncClient = saved_client
+        if saved_key is not None:
+            os.environ["VESSELFINDER_API_KEY"] = saved_key
+        else:
+            os.environ.pop("VESSELFINDER_API_KEY", None)
+        vx._CACHE.clear()
+        vx._last_call_at = 0.0
+        vx._last_reason = None
+
+    print("\n=== Vessel parsing (offline VesselsList shape) ===")
+    print("  AIS-only -> available, speed/pos/draught parsed, dwt None")
+    print("  AIS+MASTERDATA -> dwt 74000 · error body -> available False")
+    print("Vessel parsing assertions passed.")
+
+
 def test_vessels_no_key_fallback():
     """Phase F9: with no API key the detail endpoint degrades cleanly (no call)."""
     import os
@@ -471,5 +563,6 @@ if __name__ == "__main__":
     test_weather_fallback()
     test_vessels()
     test_vessel_reason_classification()
+    test_vessel_parsing_offline()
     test_vessels_no_key_fallback()
     print("\nAll assertions passed.")

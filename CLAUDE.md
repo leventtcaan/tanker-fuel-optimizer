@@ -666,3 +666,26 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
       CONDITION FOR A SUCCESSFUL LIVE CALL: set a VALID VESSELFINDER_API_KEY in
         backend/.env (current value returns "Invalid Userkey!"). Request format is
         already correct; a valid key returns the {AIS, MASTERDATA} array.
+- [x] DEBUG F9c — VesselFinder response parsing (wrong endpoint). DONE (1+1 live calls).
+      After a valid key (WS… len 18) was set, /vessels/{imo} -> request_error.
+      DIAGNOSED (1 masked live call): GET api.vesselfinder.com/vessels -> HTTP 200
+        {"error":"Method is not permitted!"}. Docs show TWO families: credit-based
+        "Vessels" (/vessels) vs SUBSCRIPTION-based "VesselsList". Our key is a
+        VesselsList subscription, so the /vessels (credit) endpoint is not
+        permitted. ROOT CAUSE = wrong ENDPOINT, not a parse/shape bug.
+      FIX (vessels.py): endpoint -> https://api.vesselfinder.com/vesselslist.
+        VesselsList returns the account's PREDEFINED fleet (NO imo param) as a
+        top-level array of {AIS, VOYAGE, MASTERDATA} — fits our single-call +
+        1h-cache design. dropped imo param; kept userkey+format=json+
+        extradata=master. parser (_parse: AIS speed/lat/lon/draught + MASTERDATA
+        DWT) unchanged — it already matched. masked-key security, 1h cache,
+        classify+fallback all kept.
+      VERIFIED (1 live call via real fetch_vessel): available:true — IMO 9359600 =
+        "KPS AYBERK BEY", speed 0.0 kn (NAVSTAT 5 moored), pos 40.699,29.456
+        (Marmara), draught 5.2 m, dest "TR YAL". All 5 fleet IMOs returned+cached
+        (account fleet == our 5 KH tankers). dwt=None: MASTERDATA not in this
+        plan's response -> parsed gracefully (frontend autofill guards dwt>0, so
+        it just skips DWT; draft autofills). offline mocks: AIS-only->available
+        dwt None; AIS+MASTERDATA->dwt 74000; error body->available false.
+        test_api.py +test_vessel_parsing_offline (deterministic, no live call).
+        full suite green (live test_vessels skipped to honor the call budget).

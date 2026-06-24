@@ -12,8 +12,9 @@ never hardcoded, never logged, and never written to .env.example.
 
 TRIAL LIMITS (important): the trial key allows ~1 query/hour for 5 vessels over
 5 days. To respect that:
-  - One batched request fetches ALL fleet vessels at once (the API accepts a
-    comma-separated IMO list), so selecting any vessel costs at most one query.
+  - One request fetches ALL fleet vessels at once (the VesselsList method returns
+    the account's predefined fleet), so selecting any vessel costs at most one
+    query; we cache each returned vessel by its IMO.
   - Results are cached per IMO for >= 1 hour (CACHE_TTL_S).
   - A process-level rate guard refuses to call the API more often than once per
     hour, even on a cache miss, so the app cannot hammer the endpoint.
@@ -35,7 +36,13 @@ from dotenv import load_dotenv
 # import: it does not override variables already present in the environment.
 load_dotenv()
 
-VESSELFINDER_URL = "https://api.vesselfinder.com/vessels"
+# VesselFinder "VesselsList" method (subscription-based): returns the account's
+# PREDEFINED fleet in one call, as a top-level JSON array of {AIS, VOYAGE,
+# MASTERDATA} objects. This is the method our trial key is provisioned for — the
+# credit-based "/vessels" endpoint returns {"error":"Method is not permitted!"}
+# for this key. VesselsList takes NO imo param (the fleet is fixed on the
+# account), which also fits our single-batched-call + 1h-cache design exactly.
+VESSELFINDER_URL = "https://api.vesselfinder.com/vesselslist"
 
 # Fixed fleet: Karadeniz Holding tankers, by IMO. The display names are
 # placeholders for the dropdown; a successful query overrides them with the
@@ -191,8 +198,10 @@ async def _refresh_all():
                     VESSELFINDER_URL,
                     params={
                         "userkey": key,
-                        "imo": ",".join(str(i) for i in _IMOS),
+                        # VesselsList returns the predefined fleet (no imo param).
                         "format": "json",
+                        # Include the Master dataset (DWT, name, type) when the
+                        # plan allows; AIS position/speed/draught come regardless.
                         "extradata": "master",
                     },
                     timeout=REQUEST_TIMEOUT_S,
