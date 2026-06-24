@@ -66,6 +66,9 @@ REQUEST_TIMEOUT_S = 6.0  # per-request timeout; the demo must not hang on a slow
 # is the real usage path).
 CACHE_TTL_S = 3600
 _MIN_CALL_INTERVAL_S = 3600
+# After a FAILED attempt we retry sooner (a transient error must not poison the
+# whole hour) while still not hammering. A SUCCESS is cached for the full hour.
+_FAIL_COOLDOWN_S = 300
 
 _CACHE: dict[int, tuple[float, dict]] = {}  # imo -> (expires_at, data)
 _last_call_at = 0.0  # epoch seconds of the last actual API call (rate guard)
@@ -186,11 +189,16 @@ async def _refresh_all():
         return "no_api_key"
     async with _lock:
         now = time.time()
-        # Another coroutine may have refreshed while we waited for the lock, or we
-        # are inside the hourly guard window: surface the last known cause so an
-        # invalid key isn't masked as a "limit".
-        if _last_call_at > 0 and now - _last_call_at < _MIN_CALL_INTERVAL_S:
-            return _last_reason or "rate_limited"
+        # Rate guard. A SUCCESSFUL refresh (_last_reason is None) is trusted for a
+        # full hour (data is cached); a FAILED attempt is only held for a short
+        # cooldown so a transient error self-heals instead of poisoning the hour.
+        # When blocked we surface the LAST cause verbatim (None on success -> the
+        # caller treats a miss as "not in fleet"; the real error code otherwise),
+        # so we never synthesize a misleading "rate_limited"/"request_error".
+        if _last_call_at > 0:
+            interval = _MIN_CALL_INTERVAL_S if _last_reason is None else _FAIL_COOLDOWN_S
+            if now - _last_call_at < interval:
+                return _last_reason
         _last_call_at = now
         try:
             async with httpx.AsyncClient() as client:
@@ -240,8 +248,9 @@ async def fetch_vessel(imo):
     """Live AIS data for one fleet vessel, cached and rate-limited.
 
     Returns the parsed vessel dict on success, or a {available: False, reason}
-    fallback if the key is missing, the API is unreachable/over-limit, or no
-    cached data exists yet inside the hourly rate window. Never raises.
+    fallback. The reason distinguishes the real cause: no_api_key, auth,
+    rate_limited, request_error, network, or not_in_fleet (the VesselsList query
+    succeeded but this IMO is not in the account's predefined fleet). Never raises.
     """
     if not _api_key():
         return _unavailable(imo, "no_api_key")
@@ -252,6 +261,9 @@ async def fetch_vessel(imo):
     cached = _cache_get(imo)
     if cached is not None:
         return cached
-    # No cached data: report the real cause from the API attempt (auth /
-    # rate_limited / request_error / network), falling back to a generic code.
-    return _unavailable(imo, reason or "unavailable")
+    # reason is None when the fleet query SUCCEEDED (or recently did) but this IMO
+    # simply isn't in the account's fleet — say so plainly rather than via the
+    # catch-all. Otherwise report the real failure cause from the API attempt.
+    if reason is None:
+        return _unavailable(imo, "not_in_fleet")
+    return _unavailable(imo, reason)

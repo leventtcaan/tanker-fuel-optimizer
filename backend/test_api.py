@@ -449,6 +449,18 @@ def test_vessel_parsing_offline():
         )
         err = asyncio.run(_run(None))
         assert err["available"] is False and "reason" in err, err
+        assert err["reason"] in ("request_error", "auth", "rate_limited"), err
+
+        # Fleet query SUCCEEDS but the requested IMO is NOT in the account fleet:
+        # report "not_in_fleet" plainly, never the catch-all (regression guard for
+        # the live /vesselslist returning a different predefined fleet).
+        httpx.AsyncClient = lambda *a, **k: _Client(
+            _Resp(200, [{"AIS": {
+                "IMO": 9447287, "NAME": "FT STURLA", "SPEED": 0.0,
+                "LATITUDE": 5.29, "LONGITUDE": -4.07, "DRAUGHT": 5.2}}])
+        )
+        miss = asyncio.run(_run(None))  # _run asks for 9359600, which is absent
+        assert miss["available"] is False and miss["reason"] == "not_in_fleet", miss
     finally:
         httpx.AsyncClient = saved_client
         if saved_key is not None:
@@ -462,6 +474,7 @@ def test_vessel_parsing_offline():
     print("\n=== Vessel parsing (offline VesselsList shape) ===")
     print("  AIS-only -> available, speed/pos/draught parsed, dwt None")
     print("  AIS+MASTERDATA -> dwt 74000 · error body -> available False")
+    print("  fleet without requested IMO -> reason not_in_fleet (not catch-all)")
     print("Vessel parsing assertions passed.")
 
 

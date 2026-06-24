@@ -167,6 +167,7 @@ const VESSEL_REASON_TR: Record<string, string> = {
   rate_limited: "Saatlik sorgu limiti",
   request_error: "İstek hatası",
   network: "Bağlantı hatası",
+  not_in_fleet: "Bu gemi hesabın canlı filo listesinde değil",
   unavailable: "Canlı veri yok",
 };
 const vesselReasonTr = (reason?: string) =>

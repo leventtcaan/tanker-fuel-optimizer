@@ -712,3 +712,25 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
           comparison + diff note. VesselData +nav_status.
       backend touched = zones.geojson only (no endpoint/schema/formula) -> verified
       /zones via TestClient (no live vessel call). npm run build OK. bundle 203kB.
+- [x] DEBUG F9d — vessel request_error was MISATTRIBUTED. DONE (1 live call). build OK.
+      DIAGNOSED (1 masked live call): GET /vesselslist?userkey=WS…90&format=json&
+        extradata=master -> HTTP 200, VALID list of 5 vessels. Endpoint intact,
+        parsing fine — NO regression. Real causes: (a) the account's live fleet
+        does NOT contain 9359600 (returns FT STURLA 9447287 / TIGRIS A 9443841 /
+        SCOT AUGSBURG 9378022 / +2), so 9359600 is a fleet miss; (b) the 1h rate
+        guard REPLAYED a stale _last_reason from an earlier transient failure for a
+        full hour, and a fleet-miss within the hour got the "rate_limited"/
+        catch-all instead of an honest reason.
+      FIX (vessels.py, no endpoint/parse change): (1) guard interval now depends on
+        outcome — SUCCESS held 1h (cached), FAILURE only _FAIL_COOLDOWN_S=300s so a
+        transient error self-heals instead of poisoning the hour; when blocked it
+        returns _last_reason VERBATIM (None on success) — no synthesized reason.
+        (2) fetch_vessel: reason None + cache miss => "not_in_fleet" (distinct from
+        the catch-all). frontend VESSEL_REASON_TR +not_in_fleet ("Bu gemi hesabın
+        canlı filo listesinde değil").
+      VERIFIED offline (0 live calls): fleet w/o 9359600 -> 9359600 not_in_fleet
+        (stable on repeat, NOT rate_limited), 9447287 available (FT STURLA, moored
+        0.0kn -> moored card), 9378022 available 12.4kn; transient fail -> replays
+        within cooldown then self-heals to available after it. test_api.py
+        test_vessel_parsing_offline +not_in_fleet case. in-fleet IMOs (9447287/
+        9443841/9378022) work live; 9359600/9311646 honestly report not_in_fleet.
