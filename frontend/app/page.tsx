@@ -100,6 +100,7 @@ type VesselData = {
   speed_kn?: number | null;
   course?: number | null;
   heading?: number | null;
+  nav_status?: number | null;
   lat?: number | null;
   lon?: number | null;
   draught_m?: number | null;
@@ -143,6 +144,9 @@ const DEFAULT_DAYS_SINCE_DD = 180;
 const DEFAULT_LOAD = 0.5;
 const DEFAULT_YEAR = 2026;
 const YEARS = [2023, 2024, 2025, 2026];
+// Days since drydock above which we advise hull cleaning (display-only advisory;
+// days_since_drydock is the single fouling driver, also used as idle/anchor days).
+const HULL_CLEAN_THRESHOLD = 25;
 
 // Economics defaults (editable REFERENCE prices, mirrored from the backend; the
 // /prices endpoint overwrites these on load when reachable).
@@ -862,9 +866,12 @@ export default function Home() {
           </Section>
 
           <Section title="Sefer">
-            <div>
+            {/* ETA = the optimizer CONSTRAINT (arrive-by deadline). Boxed with an
+                accent border + helper so it doesn't read as linked to service
+                speed (which is only the independent baseline reference). */}
+            <div className="rounded-lg border border-[var(--border)] border-l-[3px] border-l-[var(--accent)] bg-[var(--bg)] p-2.5">
               <label className="pruva-label">
-                Liman Varış Süresi: {fmtDuration(berthEta)}
+                Liman Varış Süresi — ETA (kısıt): {fmtDuration(berthEta)}
               </label>
               <input
                 type="range"
@@ -880,45 +887,73 @@ export default function Home() {
                   En erken varış: {fmtDuration(minTimeH)}
                 </p>
               )}
+              <p className="text-[11px] text-[var(--muted)] mt-1">
+                Optimize hedefi: gemi bu süreye kadar varmalı (kısıt).
+              </p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="pruva-label">Servis Hızı (kn)</label>
-                <input
-                  type="number"
-                  step={0.1}
-                  value={serviceSpeed}
-                  onChange={(e) => setServiceSpeed(Number(e.target.value))}
-                  className="pruva-input"
-                />
-              </div>
-              <div>
-                <label className="pruva-label">Yıl</label>
-                <select
-                  value={year}
-                  onChange={(e) => setYear(Number(e.target.value))}
-                  className="pruva-input"
-                >
-                  {YEARS.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+
+            {/* Service speed is the baseline/reference only — NOT linked to ETA. */}
             <div>
-              <label className="pruva-label">DWT (ton)</label>
+              <label className="pruva-label">Servis Hızı (kn) — baz</label>
               <input
                 type="number"
-                min={1}
-                value={dwt}
-                onChange={(e) => setDwt(Number(e.target.value))}
+                step={0.1}
+                value={serviceSpeed}
+                onChange={(e) => setServiceSpeed(Number(e.target.value))}
+                className="pruva-input"
+              />
+              <p className="text-[11px] text-[var(--muted)] mt-1">
+                Karşılaştırma için baz hız — optimize ondan bağımsız hesaplanır.
+              </p>
+            </div>
+
+            <div>
+              <label className="pruva-label">Yıl</label>
+              <select
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                className="pruva-input"
+              >
+                {YEARS.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* Idle/anchor days = the single fouling driver (days_since_drydock),
+                placed right under Yıl. */}
+            <div>
+              <label className="pruva-label">Demirde Bekleme / Drydock&apos;tan Gün</label>
+              <input
+                type="number"
+                min={0}
+                value={daysSinceDrydock}
+                onChange={(e) => setDaysSinceDrydock(Number(e.target.value))}
                 className="pruva-input"
               />
             </div>
-            {/* Vessel inputs for the log-linear fuel formula (F1). */}
+            {daysSinceDrydock > HULL_CLEAN_THRESHOLD && (
+              <p
+                className="text-[11px] -mt-1"
+                style={{ color: "var(--grade-d)" }}
+              >
+                ⚠ Tekne kirliliği yüksek — gövde temizliği önerilir (yakıt
+                verimliliği düşüyor).
+              </p>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="pruva-label">DWT (ton)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={dwt}
+                  onChange={(e) => setDwt(Number(e.target.value))}
+                  className="pruva-input"
+                />
+              </div>
               <div>
                 <label className="pruva-label">Draft Dm (m)</label>
                 <input
@@ -927,16 +962,6 @@ export default function Home() {
                   step={0.5}
                   value={draftDm}
                   onChange={(e) => setDraftDm(Number(e.target.value))}
-                  className="pruva-input"
-                />
-              </div>
-              <div>
-                <label className="pruva-label">Drydock&apos;tan gün</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={daysSinceDrydock}
-                  onChange={(e) => setDaysSinceDrydock(Number(e.target.value))}
                   className="pruva-input"
                 />
               </div>
@@ -1308,44 +1333,61 @@ export default function Home() {
                   <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                     Gemi vs PRUVA · {vesselData?.name}
                   </p>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-2.5">
-                      <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
-                        Geminin anlık hızı
-                      </p>
-                      <p className="text-lg font-bold mt-0.5">
-                        {vesselSpeed.toFixed(1)} kn
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-2.5">
-                      <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
-                        PRUVA önerisi (ort.)
-                      </p>
-                      <p className="text-lg font-bold mt-0.5 text-[var(--accent)]">
-                        {suggestedSpeedKn.toFixed(1)} kn
-                      </p>
-                    </div>
-                  </div>
                   {(() => {
+                    // AIS nav status 1 = at anchor, 5 = moored. A moored/idle
+                    // ship at 0 kn must NOT be shown as a misleading "0 vs X".
+                    const navMoored =
+                      vesselData?.nav_status === 1 || vesselData?.nav_status === 5;
+                    const moored = vesselSpeed === 0 || navMoored;
+                    if (moored) {
+                      return (
+                        <p className="text-sm mt-2">
+                          Gemi şu an demirde (0 kn). Seyir halinde olsaydı PRUVA
+                          önerisi:{" "}
+                          <span className="font-bold text-[var(--accent)]">
+                            {suggestedSpeedKn.toFixed(1)} kn
+                          </span>
+                          .
+                        </p>
+                      );
+                    }
                     const diff = vesselSpeed - suggestedSpeedKn;
-                    if (diff > 0.1)
-                      return (
-                        <p className="text-sm text-[var(--muted)] mt-2">
-                          Gemi öneriden {diff.toFixed(1)} kn daha hızlı —
-                          yavaşlama ile yakıt tasarrufu potansiyeli.
-                        </p>
-                      );
-                    if (diff < -0.1)
-                      return (
-                        <p className="text-sm text-[var(--muted)] mt-2">
-                          Gemi öneriden {Math.abs(diff).toFixed(1)} kn daha yavaş
-                          seyrediyor — varış süresine dikkat.
-                        </p>
-                      );
                     return (
-                      <p className="text-sm text-[var(--muted)] mt-2">
-                        Gemi zaten öneriye yakın hızda seyrediyor.
-                      </p>
+                      <>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                              Geminin anlık hızı
+                            </p>
+                            <p className="text-lg font-bold mt-0.5">
+                              {vesselSpeed.toFixed(1)} kn
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                              PRUVA önerisi (ort.)
+                            </p>
+                            <p className="text-lg font-bold mt-0.5 text-[var(--accent)]">
+                              {suggestedSpeedKn.toFixed(1)} kn
+                            </p>
+                          </div>
+                        </div>
+                        {diff > 0.1 ? (
+                          <p className="text-sm text-[var(--muted)] mt-2">
+                            Gemi öneriden {diff.toFixed(1)} kn daha hızlı —
+                            yavaşlama ile yakıt tasarrufu potansiyeli.
+                          </p>
+                        ) : diff < -0.1 ? (
+                          <p className="text-sm text-[var(--muted)] mt-2">
+                            Gemi öneriden {Math.abs(diff).toFixed(1)} kn daha yavaş
+                            seyrediyor — varış süresine dikkat.
+                          </p>
+                        ) : (
+                          <p className="text-sm text-[var(--muted)] mt-2">
+                            Gemi zaten öneriye yakın hızda seyrediyor.
+                          </p>
+                        )}
+                      </>
                     );
                   })()}
                 </div>

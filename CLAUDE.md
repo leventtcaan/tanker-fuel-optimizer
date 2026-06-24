@@ -689,3 +689,26 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         dwt None; AIS+MASTERDATA->dwt 74000; error body->available false.
         test_api.py +test_vessel_parsing_offline (deterministic, no live call).
         full suite green (live test_vessels skipped to honor the call budget).
+- [x] Final revisions pass — ETA/speed clarity + idle-days + hull advisory + moored
+      card + more ECA/SECA on map. DONE. build OK. NO formula/optimizer change.
+      (1) ETA vs Servis Hızı clarity (page.tsx Sefer): ETA now in an accent-bordered
+          box "Liman Varış Süresi — ETA (kısıt)" + helper "Optimize hedefi: gemi bu
+          süreye kadar varmalı (kısıt)." Servis Hızı own block "Servis Hızı (kn) — baz"
+          + helper "Karşılaştırma için baz hız — optimize ondan bağımsız hesaplanır."
+          (visually separated so they don't read as linked).
+      (1b) more ECA/SECA on map (display only): data/zones.geojson +Kuzey Amerika ECA
+          (Atlantik/Pasifik/Meksika Körfezi) + ABD Karayip ECA polygons (approx,
+          [lon,lat], closed rings). zones.py bbox COST logic UNCHANGED (still
+          Med/NorthSea/Baltic only) — purely the /zones map layer. verified /zones
+          200 w/ 8 features, rings closed.
+      (2) idle/anchor days: reused days_since_drydock as the single fouling driver,
+          relabeled "Demirde Bekleme / Drydock'tan Gün", placed directly UNDER Yıl.
+      (3) hull-cleaning advisory: when days_since_drydock > 25 (HULL_CLEAN_THRESHOLD)
+          show TR note "⚠ Tekne kirliliği yüksek — gövde temizliği önerilir (yakıt
+          verimliliği düşüyor)" under the input. display only.
+      (4) moored vessel card: AIS navstat 1(anchor)/5(moored) or speed 0 -> instead
+          of misleading "0 vs X", show "Gemi şu an demirde (0 kn). Seyir halinde
+          olsaydı PRUVA önerisi: X kn." underway (speed>0) keeps the real 2-box
+          comparison + diff note. VesselData +nav_status.
+      backend touched = zones.geojson only (no endpoint/schema/formula) -> verified
+      /zones via TestClient (no live vessel call). npm run build OK. bundle 203kB.
