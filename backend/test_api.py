@@ -314,16 +314,10 @@ def test_vessels():
     available:false fallback when the key is missing / over its hourly limit.
     """
     fleet = client.get("/vessels").json()
-    assert len(fleet) == 5, fleet
+    assert len(fleet) == 3, fleet
     assert all("imo" in v and "name" in v for v in fleet), fleet
-    # The fixed Karadeniz Holding IMOs are exactly these.
-    assert {v["imo"] for v in fleet} == {
-        9359600,
-        9447287,
-        9311646,
-        9378022,
-        9443841,
-    }, fleet
+    # The account's actual VesselsList fleet (confirmed live), with real names.
+    assert {v["imo"] for v in fleet} == {9447287, 9443841, 9378022}, fleet
 
     # Unknown IMO -> 404 (we never spend the quota on arbitrary IMOs).
     assert client.get("/vessels/1234567").status_code == 404
@@ -485,10 +479,12 @@ def test_vessels_no_key_fallback():
 
     saved = os.environ.pop("VESSELFINDER_API_KEY", None)
     try:
-        detail = client.get("/vessels/9359600").json()
+        # Use an in-fleet IMO so the endpoint reaches fetch_vessel (non-fleet
+        # IMOs 404 before any key check).
+        detail = client.get("/vessels/9447287").json()
         assert detail["available"] is False, detail
         assert detail["reason"] == "no_api_key", detail
-        assert detail["imo"] == 9359600 and detail["name"], detail
+        assert detail["imo"] == 9447287 and detail["name"], detail
     finally:
         if saved is not None:
             os.environ["VESSELFINDER_API_KEY"] = saved

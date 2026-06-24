@@ -734,3 +734,13 @@ Ship burn fuel. Fast ship eat much fuel. Slow ship save fuel.
         within cooldown then self-heals to available after it. test_api.py
         test_vessel_parsing_offline +not_in_fleet case. in-fleet IMOs (9447287/
         9443841/9378022) work live; 9359600/9311646 honestly report not_in_fleet.
+- [x] Vessel dropdown -> actual account fleet only. DONE. build OK. no live call.
+      VESSELS now = the 3 real fleet vessels w/ real names: 9447287 FT STURLA,
+        9443841 TIGRIS A, 9378022 SCOT AUGSBURG. removed 9359600/9311646 (not in
+        account fleet -> would only ever return not_in_fleet). a successful query
+        still refreshes each name from live AIS/MASTERDATA. /vessels (static) now
+        returns these 3; /vessels/{imo} 404s for the removed IMOs.
+      tests updated: test_vessels len 5->3 + IMO set {9447287,9443841,9378022};
+        test_vessels_no_key_fallback uses in-fleet 9447287 (removed IMO would 404
+        before the key check). verified static /vessels + 404 + offline tests
+        green WITHOUT a live call. npm run build OK. bundle 203kB.

@@ -44,15 +44,15 @@ load_dotenv()
 # account), which also fits our single-batched-call + 1h-cache design exactly.
 VESSELFINDER_URL = "https://api.vesselfinder.com/vesselslist"
 
-# Fixed fleet: Karadeniz Holding tankers, by IMO. The display names are
-# placeholders for the dropdown; a successful query overrides them with the
-# real MASTERDATA/AIS name from VesselFinder.
+# Fixed fleet: the vessels actually present in the account's VesselsList fleet,
+# with their real AIS names (confirmed from a live /vesselslist response). The
+# earlier placeholders 9359600 and 9311646 are NOT in the account fleet and were
+# removed so the dropdown only offers vessels that return live data. A successful
+# query still refreshes each name from the live MASTERDATA/AIS feed.
 VESSELS = [
-    {"imo": 9359600, "name": "KH Tanker 1 (IMO 9359600)"},
-    {"imo": 9447287, "name": "KH Tanker 2 (IMO 9447287)"},
-    {"imo": 9311646, "name": "KH Tanker 3 (IMO 9311646)"},
-    {"imo": 9378022, "name": "KH Tanker 4 (IMO 9378022)"},
-    {"imo": 9443841, "name": "KH Tanker 5 (IMO 9443841)"},
+    {"imo": 9447287, "name": "FT STURLA"},
+    {"imo": 9443841, "name": "TIGRIS A"},
+    {"imo": 9378022, "name": "SCOT AUGSBURG"},
 ]
 
 _IMOS = [v["imo"] for v in VESSELS]
